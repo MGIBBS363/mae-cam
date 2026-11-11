@@ -328,14 +328,22 @@ $("startBtn").onclick=async function(){this.disabled=true;try{if(R.on)await stop
 $("dimBtn").onclick=function(){$("dim").style.display="flex"};$("dim").onclick=function(){this.style.display="none"};
 $("learnBtn").onclick=async function(){if(!R.on){err("Start watching first, then re-learn.");return;}await learnRoom();};
 
+function learnBtnFlash(ok,msg){
+  var b=$("learnBtn");b.textContent=msg;
+  b.style.background=ok?"var(--green)":"var(--red)";b.style.color="#fff";
+  setTimeout(function(){b.textContent="Re-learn room";b.style.background="";b.style.color="";},3000);
+}
 async function learnRoom(){
-  var g=R.gen;
+  var g=R.gen;var b=$("learnBtn");b.disabled=true;b.textContent="Learning…";
   try{note("Learning the room from this photo…");
     var j=parseJSON(await claude(S.m2,null,roomPrompt(S),await snapshot(),500));
     if(!live(g))return;
     S.room=j.summary+" Places: "+(j.places||[]).map(function(p){return p.name+" ("+p.position+")"}).join("; ")+".";
     save();fill();note("Room learned: "+(j.places||[]).map(function(p){return p.name}).join(", ")+".");
-  }catch(e){note("Couldn't learn the room ("+e.message+"). Carrying on without it.");}
+    if(live(g)){b.disabled=false;learnBtnFlash(true,"✓ Room updated");}
+  }catch(e){note("Couldn't learn the room ("+e.message+"). Carrying on without it.");
+    if(live(g)){b.disabled=false;learnBtnFlash(false,"⚠ Couldn't learn");}
+  }
 }
 
 // ---------- the loop ----------
