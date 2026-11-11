@@ -33,10 +33,20 @@ details summary{font-weight:600;cursor:pointer;padding:4px 0}
 #dim{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;color:#333;display:none;align-items:center;justify-content:center;z-index:9;font-size:13px}
 .hint{font-size:12.5px;color:var(--mut)}
 code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(--gold)}
+@media (orientation:landscape) and (min-width:620px){
+  body{max-width:1150px;margin:0 auto}
+  .layout{display:flex;gap:16px;align-items:flex-start}
+  .layout .lcol{flex:1.15;position:sticky;top:env(safe-area-inset-top);align-self:flex-start}
+  .layout .rcol{flex:1;min-width:0}
+  #view{padding-top:60%}
+  h1{margin-top:10px}
+}
 </style>
 </head>
 <body>
 <h1>Mae Cam</h1>
+<div class="layout">
+<div class="lcol">
 <div id="view"><video id="video" playsinline muted autoplay></video><div id="badge"><i></i><span id="badgeT">Off</span></div></div>
 <div class="card">
   <button id="startBtn" class="big">Start watching</button>
@@ -48,6 +58,8 @@ code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(
   <div class="row"><span>Telegram</span><b id="sTg">not linked</b></div>
   <div class="btns" style="margin-top:8px"><button id="dimBtn">Dim screen</button><button id="learnBtn">Re-learn room</button></div>
 </div>
+</div>
+<div class="rcol">
 <div class="card"><b>Feed</b><div id="feed"><div class="sys">Nothing yet.</div></div></div>
 <div class="card">
 <details id="setup"><summary>Settings</summary>
@@ -70,6 +82,8 @@ code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(
   <div class="btns" style="margin-top:10px"><button id="saveBtn" style="background:var(--gold);color:#222">Save</button><button id="wipeBtn">Erase keys &amp; data</button></div>
   <p class="hint">Keys are stored only in this browser on this phone. Snapshots go to Anthropic (to be read) and Telegram (to reach you) and are not kept anywhere else.</p>
 </details>
+</div>
+</div>
 </div>
 <div id="dim">watching · tap to wake</div>
 <canvas id="small" width="64" height="48" hidden></canvas><canvas id="shot" hidden></canvas>
