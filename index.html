@@ -223,6 +223,7 @@ async function claude(model,system,text,blob,maxTok){
   finally{clearTimeout(to)}
   if(!r.ok){var e=new Error((j.error&&j.error.message)||("Claude error "+r.status));e.status=r.status;throw e;}
   var u=j.usage||{},h=/haiku/.test(model);R.cost+=((u.input_tokens||0)*(h?0.1:2)+(u.output_tokens||0)*(h?0.5:10))/1e6;
+  R.lastMeta={stop:j.stop_reason||"?",types:(j.content||[]).map(function(p){return p.type}).join(",")||"none"};
   return (j.content||[]).map(function(p){return p.text||""}).join("").trim();
 }
 function parseJSON(t){var m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("No JSON in reply");return JSON.parse(m[0]);}
@@ -308,7 +309,7 @@ async function start(){
     try{video.srcObject=stream;await video.play();}catch(e){stream.getTracks().forEach(function(t){t.stop()});throw e;}
     stream.getVideoTracks()[0].onended=camLost;
     await sleep(1200);
-    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(),startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",checks:0,hourChecks:[],cost:0,fails:0});
+    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(),startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",diag:0,checks:0,hourChecks:[],cost:0,fails:0});
     var g=R.gen;
     await getWake();startPolling();note("Watching started. Auto-stop at "+hhmm(R.stopAt)+".");
     if(!("wakeLock" in navigator))note("This iPhone can't keep its own screen on. Set Settings > Display & Brightness > Auto-Lock to Never.");
@@ -369,7 +370,13 @@ async function tick(){
 }
 async function check(g){
   var blob=await snapshot();R.checks++;R.hourChecks.push(Date.now());
-  var o=parseJSON(await claude(S.m1,null,checkPrompt(S),blob,300));
+  var txt=await claude(S.m1,null,checkPrompt(S),blob,300),o;
+  try{o=parseJSON(txt);}catch(e){
+    if(!live(g))return;
+    R.diag=(R.diag||0)+1;
+    if(R.diag<=3)note("Cheap check gave no JSON ["+R.lastMeta.stop+" / "+R.lastMeta.types+"] "+(txt.slice(0,80)||"(empty reply)")+" — asking the better model instead.");
+    o=parseJSON(await claude(S.m2,null,checkPrompt(S),blob,300));
+  }
   if(!live(g))return;
   o.present=!!o.present;o.where=String(o.where||"out of view").toLowerCase();o.doing=String(o.doing||"unknown").toLowerCase();o.other=String(o.other||"none").toLowerCase();o.detail=String(o.detail||"");o.confidence=+o.confidence||0;
   if(!o.present)o.where="out of view";
