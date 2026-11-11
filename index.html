@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Mae Cam</title>
+<style>
+:root{--bg:#141312;--card:#1f1d1b;--line:#33302c;--ink:#f1ece4;--mut:#9a9187;--gold:#e0a84e;--red:#c2543f;--green:#5fa37a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 24px)}
+h1{font-size:20px;margin:14px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+#view{position:relative;border-radius:14px;overflow:hidden;background:#000;height:0;padding-top:75%}
+#video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block}
+#badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);padding:3px 9px;border-radius:99px;font-size:12px}
+#badge i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#666;margin-right:6px}
+#badge.on i{background:#e04b3c}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 14px;color:#fff;background:#3a3632}
+button.big{width:100%;font-size:17px;padding:15px}
+#startBtn{background:var(--green)}#startBtn.on{background:var(--red)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;color:var(--mut)}
+.row b{color:var(--ink);font-weight:500;text-align:right}
+.btns{display:flex;gap:8px;flex-wrap:wrap}.btns button{flex:1}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px;text-transform:uppercase;letter-spacing:.05em}
+input,textarea,select{width:100%;font:inherit;color:var(--ink);background:#141312;border:1px solid var(--line);border-radius:10px;padding:9px}
+textarea{min-height:70px}
+.msg{background:#2a2724;border-radius:12px;padding:7px 10px;margin:6px 0;max-width:90%}
+.msg small{display:block;color:var(--mut);font-size:11px}
+.sys{color:var(--mut);font-size:12px;margin:4px 0}
+#err{color:#ff9d8a;font-size:13px;min-height:1em}
+details summary{font-weight:600;cursor:pointer;padding:4px 0}
+#dim{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;color:#333;display:none;align-items:center;justify-content:center;z-index:9;font-size:13px}
+.hint{font-size:12.5px;color:var(--mut)}
+code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(--gold)}
+</style>
+</head>
+<body>
+<h1>Mae Cam</h1>
+<div id="view"><video id="video" playsinline muted autoplay></video><div id="badge"><i></i><span id="badgeT">Off</span></div></div>
+<div class="card">
+  <button id="startBtn" class="big">Start watching</button>
+  <div id="err"></div>
+  <div class="row"><span id="whoIs">Mae is</span><b id="sNow">–</b></div>
+  <div class="row"><span>Texts sent</span><b id="sTexts">0</b></div>
+  <div class="row"><span>Checks / est. cost this session</span><b id="sCost">0 / 0p</b></div>
+  <div class="row"><span>Auto-stop</span><b id="sAuto">–</b></div>
+  <div class="row"><span>Telegram</span><b id="sTg">not linked</b></div>
+  <div class="btns" style="margin-top:8px"><button id="dimBtn">Dim screen</button><button id="learnBtn">Re-learn room</button></div>
+</div>
+<div class="card"><b>Feed</b><div id="feed"><div class="sys">Nothing yet.</div></div></div>
+<div class="card">
+<details id="setup"><summary>Settings</summary>
+  <label>Claude API key</label><input id="fKey" type="password" autocomplete="off" placeholder="sk-ant-...">
+  <label>Telegram bot token</label><input id="fTg" type="password" autocomplete="off" placeholder="123456:ABC...">
+  <div class="btns" style="margin-top:8px"><button id="linkBtn">Link my Telegram</button></div>
+  <div id="linkMsg" class="hint"></div>
+  <label>House rules (optional, one line)</label><input id="fRules" placeholder="e.g. Not allowed on the sofa">
+  <label>Auto-stop after (hours)</label><input id="fAuto" type="number" min="0.5" max="12" step="0.5">
+  <label>Room description (filled in from the first photo; edit if wrong)</label><textarea id="fRoom"></textarea>
+  <details><summary>Advanced (for reuse, e.g. garden wildlife)</summary>
+    <label>Subject name</label><input id="fName">
+    <label>Who you're looking for</label><input id="fDesc">
+    <label>Owner's name</label><input id="fOwner">
+    <label>Voice / personality brief</label><textarea id="fPersona" style="min-height:160px"></textarea>
+    <label>Quick-check model</label><input id="fM1">
+    <label>Writing model</label><input id="fM2">
+    <label>Minutes between ordinary texts</label><input id="fCool" type="number" min="1" max="60">
+  </details>
+  <div class="btns" style="margin-top:10px"><button id="saveBtn" style="background:var(--gold);color:#222">Save</button><button id="wipeBtn">Erase keys &amp; data</button></div>
+  <p class="hint">Keys are stored only in this browser on this phone. Snapshots go to Anthropic (to be read) and Telegram (to reach you) and are not kept anywhere else.</p>
+</details>
+</div>
+<div id="dim">watching · tap to wake</div>
+<canvas id="small" width="64" height="48" hidden></canvas><canvas id="shot" hidden></canvas>
+
+<script>
+/*<detector>*/
+// Free, on-device change detection. Works on tiny greyscale frames (Uint8Array).
+function frameDiff(a,b,thresh){ // fraction of pixels that changed, ignoring an overall brightness shift
+  var n=a.length,sum=0,i; for(i=0;i<n;i++) sum+=a[i]-b[i];
+  var shift=sum/n,c=0; for(i=0;i<n;i++) if(Math.abs(a[i]-b[i]-shift)>(thresh||28)) c++;
+  return c/n;
+}
+function Detector(o){o=o||{};
+  this.changeFrac=o.changeFrac||0.03;   // how much of the picture must differ from the last checked frame
+  this.stillFrac=o.stillFrac||0.012;    // below this vs previous frame = "settled"
+  this.minGap=o.minGap||15000;          // ms between checks
+  this.maxMoving=o.maxMoving||15000;    // check anyway after this much continuous movement
+  this.heartbeat=o.heartbeat||20*60000; // check anyway this often
+  this.prev=null;this.ref=null;this.stable=0;this.movingSince=0;this.lastCheck=0;
+}
+Detector.prototype.step=function(g,now){ // returns "change" | "heartbeat" | null
+  if(!this.ref){this.ref=g;this.prev=g;this.lastCheck=now;return "change";}
+  var dPrev=frameDiff(g,this.prev),dRef=frameDiff(g,this.ref);this.prev=g;
+  if(dPrev<this.stillFrac){this.stable++;if(this.stable>=2&&dRef<=this.changeFrac)this.movingSince=0;}else{this.stable=0;if(!this.movingSince)this.movingSince=now;}
+  if(now-this.lastCheck<this.minGap) return null;
+  var why=null;
+  if(dRef>this.changeFrac&&(this.stable>=2||(this.movingSince&&now-this.movingSince>this.maxMoving))) why="change";
+  else if(now-this.lastCheck>this.heartbeat) why="heartbeat";
+  if(why){this.ref=g;this.lastCheck=now;this.movingSince=0;}
+  return why;
+};
+/*</detector>*/
+
+/*<news>*/
+// Decides whether a new observation is worth a text, compared with the state we last texted about.
+var REST={lying:1,sleeping:1,sitting:1};
+function newsOf(last,cur){ // returns null or {kind, priority}
+  if(!cur||cur.confidence<0.5) return null;
+  if(!last) return {kind:"start",priority:2};
+  if(cur.other&&cur.other!=="none"&&cur.other!==last.other) return {kind:"visitor",priority:2};
+  if(cur.present!==last.present) return {kind:cur.present?"returned":"left_view",priority:1};
+  if(!cur.present) return null;
+  if(cur.where!==last.where) return {kind:"moved",priority:1};
+  if(!!REST[cur.doing]!==!!REST[last.doing]) return {kind:"activity",priority:0};
+  return null;
+}
+/*</news>*/
+
+/*<prompts>*/
+var DEFAULT_PERSONA=[
+"You are Mae, a female Labrador-Golden Retriever cross, texting your owner while he is out. You are being watched by a camera and you find that mildly beneath you.",
+"VOICE: deadpan, dry, understated. The weary self-possession of a dad texting. Dignified, slightly evasive, never rattled.",
+"RULES OF THE VOICE:",
+"- 1 or 2 short sentences, 18 words at most in total. Often fewer.",
+"- Every text is a stance, not a status report. Say where you are or what happened, then let your attitude to it show in a few flat words. If a line could have been written by a tracking app, rewrite it.",
+"- HOUSE RULES are your best material. When FACTS show you doing something the rules forbid, do not hide it: acknowledge the rule exists and be calmly unbothered, or offer a thin technicality. Never admit guilt, never apologise. Do this the first time you break a rule, then at most once more in a day, in different words. Otherwise let it lie.",
+"- Numbers are a spice. Mention a duration or a clock time only when the number itself is the joke (a long stay, a long absence). Most texts have no numbers at all. Never recite where you were before and for how long just because FACTS include it.",
+"- You treat your duties (the door, the post, the window) as a tired professional would. Brief incident reports. Things that go wrong near you are not connected to you.",
+"- You are fond of your owner and would never say so. The closest you get is noting that he is gone, or for how long.",
+"- Vary the shape. Look at RECENT TEXTS: if the last one opened with a bare place name or a one-word fragment, open differently. Mix a plain full sentence, a two-beat line, and the occasional single short sentence. Never reuse an opening, a construction or a punchline from RECENT TEXTS.",
+"- No exclamation marks. No emojis. No 'woof', barking sounds, puns, baby talk, hashtags or questions to the owner.",
+"- Do not explain the joke. Do not say you are a dog. Do not mention the camera unless asked for a photo.",
+"- A person in FACTS is just 'someone'. Never assume it is your owner coming home, or anyone in particular.",
+"- No pet sign-offs. If a one-word closer (Noted. Routine. Business.) appears in RECENT TEXTS, do not use it or another like it this time.",
+"- Do not stretch FACTS: 'asleep for an hour' is not 'slept through most of it'.",
+"- Only use what is in FACTS. Never invent people, objects, sounds or events that are not there. You may decline to explain something; you may not make something up.",
+"EXAMPLES OF THE VOICE (do not copy):",
+"On the sofa. Have been for two hours. Not sorry.",
+"Postman came. I handled it.",
+"Moved to the rug. No reason.",
+"You have been gone three hours. I am not counting. That was a guess.",
+"Bed now. The sofa and I needed some space.",
+"Reply with the text message only."].join("\n");
+
+function checkPrompt(c){return "You are the eyes of a home camera. Look at this single photo of a room.\n"+
+"We are looking for: "+c.name+", "+c.desc+".\n"+
+"ROOM (learned earlier): "+(c.room||"unknown")+"\n\n"+
+"Reply with ONLY a JSON object, no other words:\n"+
+'{"present":true|false,"where":"<one of the room\'s named places, or floor, doorway, window, out of view>","doing":"lying|sleeping|sitting|standing|walking|playing|chewing|eating|watching|unknown","detail":"<what you can actually see, 12 words max>","other":"none|person|other animal|post or parcel|mess","confidence":<0 to 1>}\n'+
+"Rules: there is one "+c.name+" in this home, so any animal of that kind in the photo IS "+c.name+", whatever colour, size or breed it looks like in this light: use present:true. Only use \"other animal\" for a clearly different kind of animal, or a second animal alongside "+c.name+". If you cannot see "+c.name+", use present:false and where:\"out of view\". A cushion, toy or blanket is not an animal: if unsure, lower the confidence. \"other\" is for a person in the room or at the door, post on the mat, or an obvious mess (something torn to pieces or knocked over; ordinary clutter, toys and decorations are NOT mess). If the place is not one of the room's named places, describe it in one or two words. Use the room's place names exactly as written where one fits.";}
+
+function roomPrompt(c){return "This is the first photo from a fixed camera that will watch "+c.name+" ("+c.desc+") at home. Describe the room so later photos can be read against it.\n"+
+'Reply with ONLY JSON: {"summary":"<2 sentences on the room and camera angle>","places":[{"name":"<short lowercase name, e.g. sofa, dog bed, rug, armchair, hall door, window>","position":"<where in the frame>"}]}\n'+
+"List up to 8 places a dog might be on or at, including doors and windows. Only list what is visible.";}
+
+function textPrompt(c,f){return "FACTS\n"+JSON.stringify(f,null,1)+"\n\nHOUSE RULES FROM "+c.owner.toUpperCase()+": "+(c.rules||"none given")+
+"\n\nRECENT TEXTS YOU SENT (newest last):\n"+(c.recent.length?c.recent.map(function(t){return "- "+t}).join("\n"):"- none yet")+
+"\n\nWrite the next text to "+c.owner+".";}
+
+function summaryPrompt(c,log,totals){return "It is the end of the watch. Here is what happened, oldest first:\n"+log.join("\n")+
+"\n\nTOTALS (already added up correctly; use these, do not do your own sums): "+totals+
+"\n\nHOUSE RULES FROM "+c.owner.toUpperCase()+": "+(c.rules||"none given")+
+"\n\nWrite your end-of-day report to "+c.owner+": 2 to 4 short sentences, 45 words at most, same voice. Pick the two or three things that mattered, not everything. Round the numbers. If the totals show time spent somewhere the house rules forbid, that goes in, stated without remorse. End on a short dry closing line. Only use what is in the list.";}
+/*</prompts>*/
+
+// ---------- settings ----------
+var $=function(id){return document.getElementById(id)};
+var DEF={key:"",tg:"",chat:"",rules:"",auto:5,room:"",name:"Mae",desc:"a dog (female Labrador-Golden Retriever cross)",owner:"Matt",persona:DEFAULT_PERSONA,m1:"claude-haiku-5-5",m2:"claude-sonnet-5-5",cool:4};
+var S=Object.assign({},DEF);
+try{Object.assign(S,JSON.parse(localStorage.getItem("maecam")||"{}"))}catch(e){}
+function save(){try{localStorage.setItem("maecam",JSON.stringify(S))}catch(e){}}
+var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"name",fDesc:"desc",fOwner:"owner",fPersona:"persona",fM1:"m1",fM2:"m2",fCool:"cool"};
+function fill(){for(var k in FIELDS)$(k).value=S[FIELDS[k]];$("whoIs").textContent=S.name+" is";$("sTg").textContent=S.chat?"linked":"not linked";document.title=S.name+" Cam";document.querySelector("h1").textContent=S.name+" Cam";}
+function readForm(){for(var k in FIELDS){var v=String($(k).value).trim();S[FIELDS[k]]=(k==="fAuto"||k==="fCool")?(parseFloat(v)||DEF[FIELDS[k]]):v;}if(!S.persona)S.persona=DEFAULT_PERSONA;save();fill();}
+$("saveBtn").onclick=function(){readForm();note("Settings saved.");startPolling();};
+$("wipeBtn").onclick=function(){if(this.dataset.sure){try{localStorage.removeItem("maecam")}catch(e){}location.reload();}else{this.dataset.sure=1;this.textContent="Tap again to erase";}};
+fill();if(!S.key||!S.tg||!S.chat)$("setup").open=true;
+
+// ---------- state ----------
+var R={gen:0,starting:false,pauseUntil:0,nextTextTry:0,tries:[],totals:{},on:false,stream:null,timer:null,det:null,busy:false,startAt:0,stopAt:0,cur:null,since:0,lastTexted:null,lastTextAt:0,stayTexted:0,texts:[],log:[],checks:0,hourChecks:[],cost:0,fails:0,lastOther:"none"};
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function hhmm(t){var d=new Date(t||Date.now());return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
+function mins(ms){var m=Math.round(ms/60000);return m<60?m+" min":Math.floor(m/60)+"h "+("0"+m%60).slice(-2)+"m"}
+function feed(html){var f=$("feed");if(f.firstChild&&f.firstChild.className==="sys"&&f.children.length===1&&f.firstChild.textContent==="Nothing yet.")f.innerHTML="";var d=document.createElement("div");d.innerHTML=html;f.insertBefore(d.firstChild,f.firstChild);while(f.children.length>60)f.removeChild(f.lastChild);}
+function note(t){feed('<div class="sys">'+hhmm()+" · "+esc(t)+"</div>")}
+function err(t){$("err").textContent=t||""}
+function ui(){
+  $("startBtn").textContent=R.on?"Stop watching":"Start watching";$("startBtn").className="big"+(R.on?" on":"");
+  $("badge").className=R.on?"on":"";$("badgeT").textContent=R.on?"Watching · "+mins(Date.now()-R.startAt):"Off";
+  $("sNow").textContent=R.cur?(R.cur.present?R.cur.where+" · "+R.cur.doing+" · "+mins(Date.now()-R.since):"out of view · "+mins(Date.now()-R.since)):"–";
+  $("sTexts").textContent=R.texts.length;$("sCost").textContent=R.checks+" / "+(R.cost*0.79*100).toFixed(2)+"p";
+  $("sAuto").textContent=R.on?"in "+mins(R.stopAt-Date.now()):S.auto+" h after start";
+}
+setInterval(ui,5000);
+
+// ---------- Claude ----------
+function b64(blob){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(String(r.result).split(",")[1])};r.onerror=rej;r.readAsDataURL(blob)})}
+async function claude(model,system,text,blob,maxTok){
+  var content=[];if(blob)content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:await b64(blob)}});
+  content.push({type:"text",text:text});
+  var body={model:model,max_tokens:maxTok||200,messages:[{role:"user",content:content}]};if(system)body.system=system;
+  var ac=new AbortController(),to=setTimeout(function(){ac.abort()},45000),r,j;
+  try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal:ac.signal,headers:{"content-type":"application/json","x-api-key":S.key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
+    j=await r.json().catch(function(){return{}});
+  }catch(e){throw new Error(e.name==="AbortError"?"Claude took too long to answer":"Couldn't reach Claude ("+e.message+")");}
+  finally{clearTimeout(to)}
+  if(!r.ok){var e=new Error((j.error&&j.error.message)||("Claude error "+r.status));e.status=r.status;throw e;}
+  var u=j.usage||{},h=/haiku/.test(model);R.cost+=((u.input_tokens||0)*(h?0.1:2)+(u.output_tokens||0)*(h?0.5:10))/1e6;
+  return (j.content||[]).map(function(p){return p.text||""}).join("").trim();
+}
+function parseJSON(t){var m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("No JSON in reply");return JSON.parse(m[0]);}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+
+// ---------- Telegram ----------
+async function tg(method,params,blob){
+  var fd=new FormData();for(var k in params)fd.append(k,params[k]);if(blob)fd.append("photo",blob,"mae.jpg");
+  var ac=new AbortController(),to=setTimeout(function(){ac.abort()},40000);
+  try{var r=await fetch("https://api.telegram.org/bot"+S.tg+"/"+method,{method:"POST",body:fd,signal:ac.signal});var j=await r.json();
+    if(!j.ok){var e=new Error("Telegram: "+(j.description||r.status));e.status=r.status;e.retry=(j.parameters&&j.parameters.retry_after)||0;throw e;}
+    return j.result;}finally{clearTimeout(to)}
+}
+async function sendText(t,blob){ // returns true if it reached Telegram (or Telegram isn't set up)
+  feed('<div class="msg">'+esc(t)+"<small>"+hhmm()+(blob?" · with photo":"")+"</small></div>");
+  if(!S.tg||!S.chat)return true;
+  for(var i=0;i<2;i++){
+    try{if(blob)await tg("sendPhoto",{chat_id:S.chat,caption:t},blob);else await tg("sendMessage",{chat_id:S.chat,text:t});return true;}
+    catch(e){if(i===1){note("Couldn't reach Telegram: "+e.message);return false;}await sleep(Math.min((e.retry||5)*1000,20000));}
+  }
+}
+var poll={on:false,offset:0,linkCode:"",linkUntil:0};
+async function pollLoop(){
+  if(poll.on)return;poll.on=true;var wait=1000,token=S.tg;
+  while(S.tg&&S.tg===token){
+    try{
+      var ups=await tg("getUpdates",{offset:poll.offset,timeout:25,allowed_updates:'["message"]'});wait=1000;
+      $("sTg").textContent=S.chat?"linked":"bot OK, not linked";
+      for(var i=0;i<ups.length;i++){poll.offset=ups[i].update_id+1;var m=ups[i].message;if(!m||!m.text||!m.chat||m.chat.type!=="private")continue;
+        var txt=m.text.trim();
+        if(poll.linkCode&&Date.now()<poll.linkUntil&&txt.toUpperCase()===poll.linkCode){S.chat=String(m.chat.id);poll.linkCode="";save();fill();$("linkMsg").textContent="Linked to "+((m.from&&m.from.first_name)||"you")+".";sendText("Linked. I'll text you here. Say help if you need the list.");continue;}
+        if(!S.chat||String(m.chat.id)!==S.chat)continue; // ignore everyone else
+        if(Date.now()/1000-m.date>120)continue;            // ignore stale commands
+        command(txt.toLowerCase().replace(/^\//,"").split(/\s+/)[0]).catch(function(e){note("Command failed: "+e.message)});
+      }
+    }catch(e){
+      if(e.status===401||e.status===404){$("sTg").textContent="bot token refused";note("Telegram refused the bot token. Check it in Settings.");break;}
+      $("sTg").textContent=e.status===409?"another page is using this bot":"can't reach Telegram, retrying";
+      await sleep(wait);wait=Math.min(wait*2,30000);
+    }
+  }
+  poll.on=false;if(S.tg&&S.tg!==token)pollLoop();
+}
+function startPolling(){if(S.tg)pollLoop();}
+$("linkBtn").onclick=function(){readForm();if(!S.tg){$("linkMsg").textContent="Paste the bot token first.";return;}
+  var a=new Uint8Array(8),abc="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",c="";crypto.getRandomValues(a);for(var i=0;i<8;i++)c+=abc[a[i]%32];
+  poll.linkCode=c;poll.linkUntil=Date.now()+5*60000;$("linkMsg").innerHTML="Open your bot in Telegram and send it exactly this within 5 minutes: <code>"+c+"</code>";startPolling();};
+var PICS=["Here. Don't make it weird.","Photo attached. I wasn't ready.","This is me. Nothing to see.","Evidence, as requested.","There. Happy."];
+async function command(c){
+  if(c==="pic"||c==="photo"){if(!R.on)return sendText("Camera's off. Text start, or tap Start on the phone.");return sendText(PICS[Math.floor(Math.random()*PICS.length)],await snapshot());}
+  if(c==="status"){if(!R.on)return sendText("Not watching. Camera's off.");if(!R.cur)return sendText("Watching. Nothing to report yet.");
+    return sendText(R.cur.present?("On record: "+R.cur.where+", "+R.cur.doing+". "+mins(Date.now()-R.since)+" so far."):("Out of view. "+mins(Date.now()-R.since)+" so far."));}
+  if(c==="stop"){if(!R.on)return sendText("Already off.");return stop("you asked");}
+  if(c==="start"){if(R.on||R.starting)return sendText("Already watching.");try{await start();await sendText("Watching. Camera's on.");}catch(e){await sendText("Can't turn the camera on from here. Tap Start on the phone. ("+e.message+")");}return;}
+  if(c==="summary"){if(!R.log.length)return sendText("Nothing to report.");return sendSummary("");}
+  return sendText("Commands: pic, status, summary, stop, start.");
+}
+
+// ---------- camera ----------
+var video=$("video"),small=$("small"),shot=$("shot"),wake=null;
+function grey(){var x=small.getContext("2d",{willReadFrequently:true});x.drawImage(video,0,0,64,48);var d=x.getImageData(0,0,64,48).data,g=new Uint8Array(64*48);for(var i=0;i<g.length;i++)g[i]=(d[i*4]*3+d[i*4+1]*6+d[i*4+2])/10;return g;}
+function snapshot(){var w=640,h=Math.round(w*video.videoHeight/(video.videoWidth||1))||480;shot.width=w;shot.height=h;shot.getContext("2d").drawImage(video,0,0,w,h);return new Promise(function(res){shot.toBlob(res,"image/jpeg",0.72)});}
+async function getWake(){try{if("wakeLock" in navigator){wake=await navigator.wakeLock.request("screen");}}catch(e){}}
+function camLost(){if(!R.on)return;stop("the camera feed was lost");}
+document.addEventListener("visibilitychange",function(){
+  if(!R.on)return;
+  if(document.hidden){R.log.push(hhmm()+" camera page went to the background (watching paused)");return;}
+  getWake();var tr=R.stream&&R.stream.getVideoTracks()[0];
+  if(!tr||tr.readyState==="ended"){camLost();return;}
+  if(video.paused)video.play().catch(function(){});
+  note("Page back in front. Watching resumed.");
+});
+function live(g){return R.on&&g===R.gen}
+
+async function start(){
+  if(R.on||R.starting)return;R.starting=true;
+  try{
+    readForm();err("");
+    if(!S.key)throw new Error("Add the Claude API key in Settings first.");
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error("This browser can't use the camera here. Open the page in Safari over https.");
+    var stream=await Promise.race([navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:960}}}),
+      new Promise(function(_,rej){setTimeout(function(){rej(new Error("the camera didn't answer"))},15000)})]);
+    try{video.srcObject=stream;await video.play();}catch(e){stream.getTracks().forEach(function(t){t.stop()});throw e;}
+    stream.getVideoTracks()[0].onended=camLost;
+    await sleep(1200);
+    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(),startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",checks:0,hourChecks:[],cost:0,fails:0});
+    var g=R.gen;
+    await getWake();startPolling();note("Watching started. Auto-stop at "+hhmm(R.stopAt)+".");
+    if(!("wakeLock" in navigator))note("This iPhone can't keep its own screen on. Set Settings > Display & Brightness > Auto-Lock to Never.");
+    ui();
+    if(!S.room)await learnRoom();
+    if(live(g)){clearInterval(R.timer);R.timer=setInterval(tick,1000);}
+  }finally{R.starting=false;}
+}
+async function stop(why){
+  if(!R.on)return;R.on=false;R.gen++;clearInterval(R.timer);
+  if(R.stream)R.stream.getTracks().forEach(function(t){t.onended=null;t.stop()});R.stream=null;video.srcObject=null;
+  try{if(wake)wake.release()}catch(e){}wake=null;$("dim").style.display="none";
+  note("Watching stopped ("+why+"). Camera off.");ui();
+  var plain="Watch over ("+why+"). Camera's off.";
+  if(R.log.length>1&&!/key was refused/.test(why))await sendSummary(plain);else if(why!=="button")await sendText(plain);
+}
+$("startBtn").onclick=async function(){this.disabled=true;try{if(R.on)await stop("button");else await start();}catch(e){err(e.name==="NotAllowedError"?"Camera permission was refused. Allow it in Settings > Safari > Camera.":e.message);}this.disabled=false;ui();};
+$("dimBtn").onclick=function(){$("dim").style.display="flex"};$("dim").onclick=function(){this.style.display="none"};
+$("learnBtn").onclick=async function(){if(!R.on){err("Start watching first, then re-learn.");return;}await learnRoom();};
+
+async function learnRoom(){
+  var g=R.gen;
+  try{note("Learning the room from this photo…");
+    var j=parseJSON(await claude(S.m2,null,roomPrompt(S),await snapshot(),500));
+    if(!live(g))return;
+    S.room=j.summary+" Places: "+(j.places||[]).map(function(p){return p.name+" ("+p.position+")"}).join("; ")+".";
+    save();fill();note("Room learned: "+(j.places||[]).map(function(p){return p.name}).join(", ")+".");
+  }catch(e){note("Couldn't learn the room ("+e.message+"). Carrying on without it.");}
+}
+
+// ---------- the loop ----------
+async function tick(){
+  if(!R.on||R.busy||document.hidden||video.readyState<2)return;
+  var now=Date.now(),g=R.gen;
+  if(now>=R.stopAt){stop("auto-stop after "+S.auto+" h");return;}
+  R.busy=true;
+  try{
+    var why=R.det.step(grey(),now);
+    R.hourChecks=R.hourChecks.filter(function(t){return now-t<3600000});
+    var did=false;
+    if(why&&now>=R.pauseUntil&&R.hourChecks.length<60){await check(g);did=true;}
+    if(live(g)&&await maybeText(g))did=true;
+    if(did){R.fails=0;R.lastErr="";err("");}
+  }catch(e){
+    if(live(g)){
+      R.fails++;err(e.message);if(e.message!==R.lastErr){R.lastErr=e.message;note("Problem: "+e.message);}
+      if(e.status===401||e.status===403){await stop("the Claude key was refused");}
+      else if(R.fails>=4){R.pauseUntil=Date.now()+5*60000;R.nextTextTry=R.pauseUntil;R.fails=0;note("Several errors in a row. Pausing for 5 minutes.");}
+    }
+  }finally{R.busy=false;}
+}
+async function check(g){
+  var blob=await snapshot();R.checks++;R.hourChecks.push(Date.now());
+  var o=parseJSON(await claude(S.m1,null,checkPrompt(S),blob,150));
+  if(!live(g))return;
+  o.present=!!o.present;o.where=String(o.where||"out of view").toLowerCase();o.doing=String(o.doing||"unknown").toLowerCase();o.other=String(o.other||"none").toLowerCase();o.detail=String(o.detail||"");o.confidence=+o.confidence||0;
+  if(!o.present)o.where="out of view";
+  if(o.confidence<0.5){ui();return;}
+  if(!R.cur||R.cur.where!==o.where||R.cur.present!==o.present){
+    if(R.cur)R.log.push(hhmm()+" "+(R.cur.present?"left "+R.cur.where:"came back into view")+" after "+mins(Date.now()-R.since)+"; now "+(o.present?o.where+", "+o.doing:"out of view"));
+    else R.log.push(hhmm()+" watch began; "+(o.present?"on/at "+o.where+", "+o.doing:"not in view"));
+    if(R.cur)R.totals[R.cur.where]=(R.totals[R.cur.where]||0)+(Date.now()-R.since);
+    R.prevFor=R.cur?Date.now()-R.since:0;R.since=Date.now();R.stayTexted=0;
+  }
+  if(o.other!=="none"&&o.other!==R.lastOther)R.log.push(hhmm()+" "+o.other+" seen: "+o.detail);
+  R.lastOther=o.other;R.cur=o;R.curBlob=blob;R.curBlobAt=Date.now();ui();
+}
+async function maybeText(g){ // returns true if a text went out
+  if(!R.cur)return false;var now=Date.now();if(now<R.nextTextTry)return false;
+  var n=newsOf(R.lastTexted,R.cur),gap=now-R.lastTextAt,facts=null,stayMark=0;
+  if(n&&(gap>S.cool*60000||(n.priority===2&&gap>60000)||!R.lastTextAt)){
+    if(n.kind==="activity"&&now-R.since<120000)return false; // let fidgeting settle
+    facts={event:{start:S.owner+" has just gone out and left you on your own",visitor:"something other than you appeared: "+R.cur.other,left_view:"you have walked out of the camera's view",returned:"you are back in view",moved:"you moved to a new spot",activity:"same spot, different activity"}[n.kind],
+      time:hhmm(),where_now:R.cur.where,doing:R.cur.doing,seen:R.cur.detail,
+      where_before:n.kind==="moved"||n.kind==="left_view"?(R.lastTexted.present?R.lastTexted.where:"out of view"):undefined,
+      time_spent_before:n.kind==="moved"||n.kind==="left_view"||n.kind==="returned"?mins(R.prevFor||0):undefined,
+      alone_for:mins(now-R.startAt)};
+  }else if(!n&&R.cur.present){
+    var stay=now-R.since,next=R.stayTexted?R.stayTexted*2:60*60000;
+    if(stay>=next&&gap>30*60000){stayMark=next;facts={event:"nothing has changed; you are still in the same place",time:hhmm(),where_now:R.cur.where,doing:R.cur.doing,been_there_for:mins(stay),alone_for:mins(now-R.startAt)};}
+  }
+  if(!facts)return false;
+  R.tries=R.tries.filter(function(t){return now-t<3600000});
+  if(R.tries.length>=15){R.nextTextTry=now+10*60000;return false;} // hard cap on writing attempts per hour
+  R.tries.push(now);R.nextTextTry=now+90000;                        // any failure below waits at least 90 s
+  var state=R.cur,blob=(R.curBlob&&now-R.curBlobAt<60000)?R.curBlob:await snapshot();
+  var t=await claude(S.m2,S.persona,textPrompt({owner:S.owner,rules:S.rules,recent:R.texts.slice(-8).map(function(x){return x.t})},facts),null,90);
+  if(!live(g))return false;
+  t=t.replace(/^["“]|["”]$/g,"").trim();if(!t)return false;
+  if(!await sendText(t,blob))return false;                          // not delivered: try again later, state unchanged
+  R.lastTexted=state;R.lastTextAt=Date.now();R.nextTextTry=0;if(stayMark)R.stayTexted=stayMark;
+  R.texts.push({t:t,at:Date.now()});R.log.push(hhmm()+' you texted: "'+t+'"');ui();return true;
+}
+async function sendSummary(fallback){
+  try{var log=R.log.slice(-80);if(R.cur)log.push(hhmm()+" watch ended; last seen "+(R.cur.present?R.cur.where:"out of view")+" for "+mins(Date.now()-R.since)+". Total time alone: "+mins(Date.now()-R.startAt));
+    var tot=Object.assign({},R.totals);if(R.cur)tot[R.cur.where]=(tot[R.cur.where]||0)+(Date.now()-R.since);
+    var totals=Object.keys(tot).sort(function(a,b){return tot[b]-tot[a]}).map(function(k){return k+" "+mins(tot[k])}).join(", ")+". Alone in total: "+mins(Date.now()-R.startAt)+".";
+    var t=await claude(S.m2,S.persona,summaryPrompt({owner:S.owner,rules:S.rules},log,totals),null,160);await sendText(t.replace(/^["“]|["”]$/g,""));
+  }catch(e){note("Couldn't write the summary: "+e.message);if(fallback)await sendText(fallback);}
+}
+startPolling();ui();
+</script>
+</body>
+</html>
