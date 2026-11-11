@@ -163,7 +163,8 @@ function checkPrompt(c){return "You are the eyes of a home camera. Look at this 
 "ROOM (learned earlier): "+(c.room||"unknown")+"\n\n"+
 "Reply with ONLY a JSON object, no other words:\n"+
 '{"present":true|false,"where":"<one of the room\'s named places, or floor, doorway, window, out of view>","doing":"lying|sleeping|sitting|standing|walking|playing|chewing|eating|watching|unknown","detail":"<what you can actually see, 12 words max>","other":"none|person|other animal|post or parcel|mess","confidence":<0 to 1>}\n'+
-"Rules: there is one "+c.name+" in this home, so any animal of that kind in the photo IS "+c.name+", whatever colour, size or breed it looks like in this light: use present:true. Only use \"other animal\" for a clearly different kind of animal, or a second animal alongside "+c.name+". If you cannot see "+c.name+", use present:false and where:\"out of view\". A cushion, toy or blanket is not an animal: if unsure, lower the confidence. \"other\" is for a person in the room or at the door, post on the mat, or an obvious mess (something torn to pieces or knocked over; ordinary clutter, toys and decorations are NOT mess). If the place is not one of the room's named places, describe it in one or two words. Use the room's place names exactly as written where one fits.";}
+"Rules: there is one "+c.name+" in this home, so any animal of that kind in the photo IS "+c.name+", whatever colour, size or breed it looks like in this light: use present:true. Only use \"other animal\" for a clearly different kind of animal, or a second animal alongside "+c.name+". If you cannot see "+c.name+", use present:false and where:\"out of view\". A cushion, toy or blanket is not an animal: if unsure, lower the confidence. \"other\" is for a person in the room or at the door, post on the mat, or an obvious mess (something torn to pieces or knocked over; ordinary clutter, toys and decorations are NOT mess). If the place is not one of the room's named places, describe it in one or two words. Use the room's place names exactly as written where one fits.\n"+
+"The photo may be blurry, dark, cropped, mid-motion, or mostly filled by a person walking past the camera. That is still a valid photo to answer about: make your best guess (lower confidence if unsure) and reply with exactly the JSON object above. Never reply with an explanation, a refusal, a caveat, or any text outside that one JSON object, whatever the photo looks like.";}
 
 function roomPrompt(c){return "This is the first photo from a fixed camera that will watch "+c.name+" ("+c.desc+") at home. Describe the room so later photos can be read against it.\n"+
 'Reply with ONLY JSON: {"summary":"<2 sentences on the room and camera angle>","places":[{"name":"<short lowercase name, e.g. sofa, dog bed, rug, armchair, hall door, window>","position":"<where in the frame>"}]}\n'+
@@ -363,7 +364,7 @@ async function tick(){
     if(live(g)){
       R.fails++;err(e.message);if(e.message!==R.lastErr){R.lastErr=e.message;note("Problem: "+e.message);}
       if(e.status===401||e.status===403){await stop("the Claude key was refused");}
-      else if(R.fails>=4){R.pauseUntil=Date.now()+5*60000;R.nextTextTry=R.pauseUntil;R.fails=0;note("Several errors in a row. Pausing for 5 minutes.");}
+      else if(R.fails>=4){R.pauseUntil=Date.now()+30000;R.nextTextTry=R.pauseUntil;R.fails=0;note("Several errors in a row. Pausing for 30 seconds.");}
     }
   }finally{R.busy=false;}
 }
