@@ -252,19 +252,33 @@ setInterval(ui,5000);
 
 // ---------- Claude ----------
 function b64(blob){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(String(r.result).split(",")[1])};r.onerror=rej;r.readAsDataURL(blob)})}
+var THINK_OFF=true; // these models think by default; Mae Cam's jobs are simple, so turn it off
 async function claude(model,system,text,blob,maxTok){
   var content=[];if(blob)content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:await b64(blob)}});
   content.push({type:"text",text:text});
-  var body={model:model,max_tokens:maxTok||200,messages:[{role:"user",content:content}]};if(system)body.system=system;
-  var ac=new AbortController(),to=setTimeout(function(){ac.abort()},45000),r,j;
-  try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal:ac.signal,headers:{"content-type":"application/json","x-api-key":S.key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
-    j=await r.json().catch(function(){return{}});
-  }catch(e){throw new Error(e.name==="AbortError"?"Claude took too long to answer":"Couldn't reach Claude ("+e.message+")");}
-  finally{clearTimeout(to)}
-  if(!r.ok){var e=new Error((j.error&&j.error.message)||("Claude error "+r.status));e.status=r.status;throw e;}
-  var u=j.usage||{},h=/haiku/.test(model);R.cost+=((u.input_tokens||0)*(h?0.1:2)+(u.output_tokens||0)*(h?0.5:10))/1e6;
-  R.lastMeta={stop:j.stop_reason||"?",types:(j.content||[]).map(function(p){return p.type}).join(",")||"none"};
-  return (j.content||[]).map(function(p){return p.text||""}).join("").trim();
+  async function call(off,tok){
+    var body={model:model,max_tokens:tok,messages:[{role:"user",content:content}]};if(system)body.system=system;
+    if(off)body.thinking={type:"disabled"};
+    var ac=new AbortController(),to=setTimeout(function(){ac.abort()},45000),r,j;
+    try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal:ac.signal,headers:{"content-type":"application/json","x-api-key":S.key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
+      j=await r.json().catch(function(){return{}});
+    }catch(e){throw new Error(e.name==="AbortError"?"Claude took too long to answer":"Couldn't reach Claude ("+e.message+")");}
+    finally{clearTimeout(to)}
+    if(!r.ok){var e=new Error((j.error&&j.error.message)||("Claude error "+r.status));e.status=r.status;throw e;}
+    var u=j.usage||{},hk=/haiku/.test(model);R.cost+=((u.input_tokens||0)*(hk?0.1:2)+(u.output_tokens||0)*(hk?0.5:10))/1e6;
+    R.lastMeta={stop:j.stop_reason||"?",types:(j.content||[]).map(function(p){return p.type}).join(",")||"none"};
+    return (j.content||[]).filter(function(p){return !p.type||p.type==="text"}).map(function(p){return p.text||""}).join("").trim();
+  }
+  var tok=maxTok||200,out;
+  try{out=await call(THINK_OFF,tok);}
+  catch(e){
+    // if the API won't accept "thinking off", remember that and carry on with room to think
+    if(e.status===400&&THINK_OFF&&/thinking/i.test(e.message)){THINK_OFF=false;logErr("note","API refused thinking:disabled ("+e.message+"); using a bigger reply budget instead");out=await call(false,tok+2000);}
+    else throw e;
+  }
+  // still ran out of room while thinking? one retry with more space
+  if(!out&&R.lastMeta.stop==="max_tokens"){logErr("note",model+" used its whole reply on thinking; retrying with more room");out=await call(THINK_OFF,tok+2000);}
+  return out;
 }
 function parseJSON(t){var m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("No JSON in reply");return JSON.parse(m[0]);}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
