@@ -99,6 +99,7 @@ button.ghost{background:#efe3d2;color:#8a3b2c}
   <div class="btns" style="margin-top:8px"><button id="linkBtn">Link my Telegram</button></div>
   <div id="linkMsg" class="hint"></div>
   <label>House rules (optional, one line)</label><input id="fRules" placeholder="e.g. Not allowed on the sofa">
+  <label>Text style</label><select id="fStyle"><option value="plain">Plain updates (where Mae is)</option><option value="funny">Funny texts from Mae</option></select>
   <label>Auto-stop after (hours)</label><input id="fAuto" type="number" min="0.5" max="12" step="0.5">
   <label>Room description (filled in from the first photo; edit if wrong)</label><textarea id="fRoom"></textarea>
   <details><summary>Advanced (for reuse, e.g. garden wildlife)</summary>
@@ -213,11 +214,11 @@ function summaryPrompt(c,log,totals){return "It is the end of the watch. Here is
 
 // ---------- settings ----------
 var $=function(id){return document.getElementById(id)};
-var DEF={key:"",tg:"",chat:"",rules:"",auto:5,room:"",name:"Mae",desc:"a dog (female Labrador-Golden Retriever cross)",owner:"Matt",persona:DEFAULT_PERSONA,m1:"claude-haiku-5-5",m2:"claude-sonnet-5-5",cool:4};
+var DEF={key:"",tg:"",chat:"",rules:"",auto:5,room:"",name:"Mae",desc:"a dog (female Labrador-Golden Retriever cross)",owner:"Matt",persona:DEFAULT_PERSONA,m1:"claude-haiku-5-5",m2:"claude-sonnet-5-5",cool:4,style:"plain"};
 var S=Object.assign({},DEF);
 try{Object.assign(S,JSON.parse(localStorage.getItem("maecam")||"{}"))}catch(e){}
 function save(){try{localStorage.setItem("maecam",JSON.stringify(S))}catch(e){}}
-var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"name",fDesc:"desc",fOwner:"owner",fPersona:"persona",fM1:"m1",fM2:"m2",fCool:"cool"};
+var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"name",fDesc:"desc",fOwner:"owner",fPersona:"persona",fM1:"m1",fM2:"m2",fCool:"cool",fStyle:"style"};
 function fill(){for(var k in FIELDS)$(k).value=S[FIELDS[k]];$("whoIs").textContent=S.name+" is";$("sTg").textContent=S.chat?"linked":"not linked";document.title=S.name+" Cam";document.querySelector("h1").textContent=S.name+" Cam";}
 function readForm(){for(var k in FIELDS){var v=String($(k).value).trim();S[FIELDS[k]]=(k==="fAuto"||k==="fCool")?(parseFloat(v)||DEF[FIELDS[k]]):v;}if(!S.persona)S.persona=DEFAULT_PERSONA;save();fill();}
 $("saveBtn").onclick=function(){readForm();note("Settings saved.");startPolling();};
@@ -269,15 +270,13 @@ async function claude(model,system,text,blob,maxTok){
     R.lastMeta={stop:j.stop_reason||"?",types:(j.content||[]).map(function(p){return p.type}).join(",")||"none"};
     return (j.content||[]).filter(function(p){return !p.type||p.type==="text"}).map(function(p){return p.text||""}).join("").trim();
   }
-  var tok=maxTok||200,out;
+  var tok=(maxTok||200)+1500,out; // headroom so thinking can never crowd out the answer; billed only if used
   try{out=await call(THINK_OFF,tok);}
   catch(e){
     // if the API won't accept "thinking off", remember that and carry on with room to think
-    if(e.status===400&&THINK_OFF&&/thinking/i.test(e.message)){THINK_OFF=false;logErr("note","API refused thinking:disabled ("+e.message+"); using a bigger reply budget instead");out=await call(false,tok+2000);}
+    if(e.status===400&&THINK_OFF&&/thinking/i.test(e.message)){THINK_OFF=false;logErr("note","API refused thinking:disabled ("+e.message+")");out=await call(false,tok);}
     else throw e;
   }
-  // still ran out of room while thinking? one retry with more space
-  if(!out&&R.lastMeta.stop==="max_tokens"){logErr("note",model+" used its whole reply on thinking; retrying with more room");out=await call(THINK_OFF,tok+2000);}
   return out;
 }
 function parseJSON(t){var m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("No JSON in reply");return JSON.parse(m[0]);}
@@ -447,6 +446,12 @@ async function check(g){
   if(o.other!=="none"&&o.other!==R.lastOther)R.log.push(hhmm()+" "+o.other+" seen: "+o.detail);
   R.lastOther=o.other;R.cur=o;R.curBlob=blob;R.curBlobAt=Date.now();ui();
 }
+function plainText(f){var w=f.where_now;
+  var d=f.doing&&f.doing!=="unknown"?", "+f.doing:"";
+  return {"nothing has changed; you are still in the same place":"Still on the "+w+d+" ("+(f.been_there_for||"")+").",
+    "you have walked out of the camera's view":"Out of view (was on the "+(f.where_before||"?")+").","you are back in view":"Back in view: "+w+d+".",
+    "you moved to a new spot":"Moved: "+(f.where_before||"?")+" → "+w+d+".","same spot, different activity":w.charAt(0).toUpperCase()+w.slice(1)+", now "+f.doing+"."}[f.event]
+    ||(/gone out/.test(f.event)?"Watching. Mae is on the "+w+d+".":/appeared/.test(f.event)?"Something's here: "+R.cur.other+".":"Update: "+w+", "+f.doing+".");}
 async function maybeText(g){ // returns true if a text went out
   if(!R.cur)return false;var now=Date.now();if(now<R.nextTextTry)return false;
   var n=newsOf(R.lastTexted,R.cur),gap=now-R.lastTextAt,facts=null,stayMark=0;
@@ -466,9 +471,14 @@ async function maybeText(g){ // returns true if a text went out
   if(R.tries.length>=15){R.nextTextTry=now+10*60000;return false;} // hard cap on writing attempts per hour
   R.tries.push(now);R.nextTextTry=now+90000;                        // any failure below waits at least 90 s
   var state=R.cur,blob=(R.curBlob&&now-R.curBlobAt<60000)?R.curBlob:await snapshot();
-  var t=await claude(S.m2,S.persona,textPrompt({owner:S.owner,rules:S.rules,recent:R.texts.slice(-8).map(function(x){return x.t})},facts),null,90);
+  var t="";
+  if(S.style==="funny")try{t=await claude(S.m2,S.persona,textPrompt({owner:S.owner,rules:S.rules,recent:R.texts.slice(-8).map(function(x){return x.t})},facts),null,90);}
+  catch(e){logErr("text writing",e.message);}
   if(!live(g))return false;
-  t=t.replace(/^["“]|["”]$/g,"").trim();if(!t)return false;
+  t=String(t).replace(/^["“]|["”]$/g,"").trim();
+  if(t.length>300)t=t.slice(0,300).replace(/\s+\S*$/,"")+"…";
+  if(!t&&S.style!=="funny")t=plainText(facts);
+  if(!t){logErr("text writing","empty reply ["+((R.lastMeta||{}).stop||"?")+"]; sent a plain update instead");t=plainText(facts);}
   if(!await sendText(t,blob))return false;                          // not delivered: try again later, state unchanged
   R.lastTexted=state;R.lastTextAt=Date.now();R.nextTextTry=0;if(stayMark)R.stayTexted=stayMark;
   R.texts.push({t:t,at:Date.now()});R.log.push(hhmm()+' you texted: "'+t+'"');ui();return true;
