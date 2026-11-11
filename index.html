@@ -47,6 +47,16 @@ details summary{font-weight:800;cursor:pointer;padding:4px 0}
 #dim{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;color:#333;display:none;align-items:center;justify-content:center;z-index:9;font-size:13px}
 .hint{font-size:12.5px;color:var(--mut)}
 code{background:#2b2118;padding:2px 8px;border-radius:8px;font-size:16px;color:#ffd27a}
+.errhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.errhead b{font-size:17px;font-weight:800}
+.errhead .btns{flex-wrap:nowrap}
+button.sm{font-size:13px;padding:7px 14px;box-shadow:none}
+button.ghost{background:#efe3d2;color:#8a3b2c}
+.pill{display:inline-block;min-width:22px;text-align:center;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--red);color:#fff;vertical-align:2px;margin-left:4px}
+.pill.ok{background:var(--green)}
+#errList{max-height:200px;overflow:auto;-webkit-overflow-scrolling:touch;margin-top:6px}
+.eitem{font-size:12px;line-height:1.35;background:#fff1ef;border-left:3px solid var(--red);border-radius:8px;padding:6px 9px;margin:6px 0;word-break:break-word}
+.eitem small{display:block;color:var(--mut);font-weight:700;margin-bottom:2px}
 @media (orientation:landscape) and (min-width:620px){
   body{max-width:1150px;margin:0 auto}
   .layout{display:flex;gap:16px;align-items:flex-start}
@@ -76,6 +86,12 @@ code{background:#2b2118;padding:2px 8px;border-radius:8px;font-size:16px;color:#
 </div>
 <div class="rcol">
 <div class="card"><b>Feed</b><div id="feed"><div class="sys">Nothing yet.</div></div></div>
+<div class="card" id="errCard">
+  <div class="errhead"><b>Errors <span id="errCount" class="pill ok">0</span></b><span class="btns"><button id="copyErrBtn" class="sm">Copy</button><button id="clearErrBtn" class="sm ghost">Clear</button></span></div>
+  <div class="hint">Saved on this phone and kept after reloads. Copy and paste them to Claude to fix.</div>
+  <div id="errList"></div>
+  <textarea id="errDump" readonly style="display:none;min-height:140px;font-size:12px;margin-top:8px"></textarea>
+</div>
 <div class="card">
 <details id="setup"><summary>Settings</summary>
   <label>Claude API key</label><input id="fKey" type="password" autocomplete="off" placeholder="sk-ant-...">
@@ -205,6 +221,15 @@ var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"
 function fill(){for(var k in FIELDS)$(k).value=S[FIELDS[k]];$("whoIs").textContent=S.name+" is";$("sTg").textContent=S.chat?"linked":"not linked";document.title=S.name+" Cam";document.querySelector("h1").textContent=S.name+" Cam";}
 function readForm(){for(var k in FIELDS){var v=String($(k).value).trim();S[FIELDS[k]]=(k==="fAuto"||k==="fCool")?(parseFloat(v)||DEF[FIELDS[k]]):v;}if(!S.persona)S.persona=DEFAULT_PERSONA;save();fill();}
 $("saveBtn").onclick=function(){readForm();note("Settings saved.");startPolling();};
+function logErr(kind,detail){try{var L=JSON.parse(localStorage.getItem("maecam_errs")||"[]");L.push(new Date().toLocaleString("en-GB")+" | "+kind+" | "+detail);localStorage.setItem("maecam_errs",JSON.stringify(L.slice(-40)));}catch(e){}renderErrs();}
+function renderErrs(){var L=errLog();$("errCount").textContent=L.length;$("errCount").className="pill"+(L.length?"":" ok");
+  $("errList").innerHTML=L.length?L.slice().reverse().map(function(x){var p=x.split(" | ");return '<div class="eitem"><small>'+esc(p[0]||"")+' · '+esc(p[1]||"")+'</small>'+esc(p.slice(2).join(" | "))+'</div>'}).join(""):'<div class="sys">No errors logged. 🎉</div>';}
+function errLog(){try{return JSON.parse(localStorage.getItem("maecam_errs")||"[]")}catch(e){return[]}}
+$("copyErrBtn").onclick=function(){var L=errLog(),b=this,t=L.length?L.join("\n"):"No errors logged.";
+  function done(m){b.textContent=m;setTimeout(function(){b.textContent="Copy"},2500);}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(function(){done("✓ Copied")},function(){$("errDump").style.display="block";$("errDump").value=t;done("Shown below")});
+  else{$("errDump").style.display="block";$("errDump").value=t;done("Shown below");}};
+$("clearErrBtn").onclick=function(){try{localStorage.removeItem("maecam_errs")}catch(e){}$("errDump").style.display="none";renderErrs();};
 $("wipeBtn").onclick=function(){if(this.dataset.sure){try{localStorage.removeItem("maecam")}catch(e){}location.reload();}else{this.dataset.sure=1;this.textContent="Tap again to erase";}};
 fill();if(!S.key||!S.tg||!S.chat)$("setup").open=true;
 
@@ -294,7 +319,8 @@ async function command(c){
   if(c==="stop"){if(!R.on)return sendText("Already off.");return stop("you asked");}
   if(c==="start"){if(R.on||R.starting)return sendText("Already watching.");try{await start();await sendText("Watching. Camera's on.");}catch(e){await sendText("Can't turn the camera on from here. Tap Start on the phone. ("+e.message+")");}return;}
   if(c==="summary"){if(!R.log.length)return sendText("Nothing to report.");return sendSummary("");}
-  return sendText("Commands: pic, status, summary, stop, start.");
+  if(c==="errors"){var L=errLog();return sendText(L.length?"Last errors:\n"+L.slice(-10).join("\n").slice(-3500):"No errors logged.");}
+  return sendText("Commands: pic, status, summary, stop, start, errors.");
 }
 
 // ---------- camera ----------
@@ -357,7 +383,7 @@ async function learnRoom(){
     S.room=j.summary+" Places: "+(j.places||[]).map(function(p){return p.name+" ("+p.position+")"}).join("; ")+".";
     save();fill();note("Room learned: "+(j.places||[]).map(function(p){return p.name}).join(", ")+".");
     if(live(g)){b.disabled=false;learnBtnFlash(true,"✓ Room updated");}
-  }catch(e){note("Couldn't learn the room ("+e.message+"). Carrying on without it.");
+  }catch(e){logErr("room learning",e.message);note("Couldn't learn the room ("+e.message+"). Carrying on without it.");
     if(live(g)){b.disabled=false;learnBtnFlash(false,"⚠ Couldn't learn");}
   }
 }
@@ -377,7 +403,7 @@ async function tick(){
     if(did){R.fails=0;R.lastErr="";err("");}
   }catch(e){
     if(live(g)){
-      R.fails++;err(e.message);if(e.message!==R.lastErr){R.lastErr=e.message;note("Problem: "+e.message);}
+      R.fails++;err(e.message);logErr("error",e.message+(e.status?" (HTTP "+e.status+")":""));if(e.message!==R.lastErr){R.lastErr=e.message;note("Problem: "+e.message);}
       if(e.status===401||e.status===403){await stop("the Claude key was refused");}
       else if(R.fails>=4){R.pauseUntil=Date.now()+30000;R.nextTextTry=R.pauseUntil;R.fails=0;note("Several errors in a row. Pausing for 30 seconds.");}
     }
@@ -388,9 +414,11 @@ async function check(g){
   var txt=await claude(S.m1,null,checkPrompt(S),blob,300),o;
   try{o=parseJSON(txt);}catch(e){
     if(!live(g))return;
+    var m1=R.lastMeta;logErr(S.m1+" unreadable","["+m1.stop+" / "+m1.types+"] "+(txt.slice(0,600)||"(empty reply)"));
     R.diag=(R.diag||0)+1;
-    if(R.diag<=3)note("Cheap check gave no JSON ["+R.lastMeta.stop+" / "+R.lastMeta.types+"] "+(txt.slice(0,80)||"(empty reply)")+" — asking the better model instead.");
-    o=parseJSON(await claude(S.m2,null,checkPrompt(S),blob,300));
+    if(R.diag<=3)note("Cheap check gave no JSON ["+m1.stop+" / "+m1.types+"] "+(txt.slice(0,80)||"(empty reply)")+" — asking the better model instead.");
+    var txt2=await claude(S.m2,null,checkPrompt(S),blob,300);
+    try{o=parseJSON(txt2);}catch(e2){logErr(S.m2+" unreadable","["+R.lastMeta.stop+" / "+R.lastMeta.types+"] "+(txt2.slice(0,600)||"(empty reply)"));throw e2;}
   }
   if(!live(g))return;
   o.present=!!o.present;o.where=String(o.where||"out of view").toLowerCase();o.doing=String(o.doing||"unknown").toLowerCase();o.other=String(o.other||"none").toLowerCase();o.detail=String(o.detail||"");o.confidence=+o.confidence||0;
@@ -438,7 +466,7 @@ async function sendSummary(fallback){
     var t=await claude(S.m2,S.persona,summaryPrompt({owner:S.owner,rules:S.rules},log,totals),null,160);await sendText(t.replace(/^["“]|["”]$/g,""));
   }catch(e){note("Couldn't write the summary: "+e.message);if(fallback)await sendText(fallback);}
 }
-startPolling();ui();
+startPolling();ui();renderErrs();
 </script>
 </body>
 </html>
