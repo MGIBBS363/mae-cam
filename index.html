@@ -6,45 +6,60 @@
 <meta name="robots" content="noindex">
 <title>Mae Cam</title>
 <style>
-:root{--bg:#141312;--card:#1f1d1b;--line:#33302c;--ink:#f1ece4;--mut:#9a9187;--gold:#e0a84e;--red:#c2543f;--green:#5fa37a}
+:root{--bg:#fff7ec;--card:#ffffff;--line:#f1dfc6;--ink:#2b2118;--mut:#8a7660;--gold:#f2a33a;--red:#ef5d4f;--green:#2fb57a;--pink:#ff7aa8;--blue:#4f8cff;--purple:#8b5cf6}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 24px)}
-h1{font-size:20px;margin:14px 0 10px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
-#view{position:relative;border-radius:14px;overflow:hidden;background:#000;height:0;padding-top:75%}
+body{margin:0;color:var(--ink);font:15px/1.45 ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 24px);
+  background:var(--bg);
+  background-image:radial-gradient(circle at 12% 8%,rgba(255,122,168,.18) 0,transparent 32%),radial-gradient(circle at 92% 18%,rgba(79,140,255,.16) 0,transparent 30%),radial-gradient(circle at 50% 100%,rgba(242,163,58,.22) 0,transparent 45%);
+  min-height:100vh}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:14px 0 0;background:linear-gradient(90deg,#f2a33a,#ff7aa8 55%,#8b5cf6);-webkit-background-clip:text;background-clip:text;color:transparent;display:inline-block}
+.tag{margin:0 0 10px;color:var(--mut);font-size:13px;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px;margin:10px 0;box-shadow:0 6px 20px rgba(160,110,50,.10)}
+.card>b:first-child{font-size:17px;font-weight:800}
+#view{position:relative;border-radius:22px;overflow:hidden;background:#2b2118;height:0;padding-top:75%;border:4px solid #fff;box-shadow:0 0 0 3px var(--gold),0 10px 28px rgba(160,110,50,.25)}
 #video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block}
-#badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);padding:3px 9px;border-radius:99px;font-size:12px}
-#badge i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#666;margin-right:6px}
-#badge.on i{background:#e04b3c}
-button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 14px;color:#fff;background:#3a3632}
-button.big{width:100%;font-size:17px;padding:15px}
-#startBtn{background:var(--green)}#startBtn.on{background:var(--red)}
-.row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;color:var(--mut)}
-.row b{color:var(--ink);font-weight:500;text-align:right}
+#badge{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink);padding:4px 11px;border-radius:99px;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+#badge i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#bbb;margin-right:6px}
+#badge.on i{background:#ef3b2c;box-shadow:0 0 0 0 rgba(239,59,44,.6);-webkit-animation:pulse 1.6s infinite;animation:pulse 1.6s infinite}
+@-webkit-keyframes pulse{70%{box-shadow:0 0 0 7px rgba(239,59,44,0)}100%{box-shadow:0 0 0 0 rgba(239,59,44,0)}}
+@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(239,59,44,0)}100%{box-shadow:0 0 0 0 rgba(239,59,44,0)}}
+button{font:inherit;font-weight:700;border:0;border-radius:99px;padding:12px 16px;color:#fff;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 4px 12px rgba(79,92,246,.25);-webkit-tap-highlight-color:transparent;transition:transform .08s}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.6}
+button.big{width:100%;font-size:18px;padding:16px}
+#startBtn{background:linear-gradient(135deg,#2fb57a,#6fd39b);box-shadow:0 6px 16px rgba(47,181,122,.35)}
+#startBtn.on{background:linear-gradient(135deg,#ef5d4f,#ff7aa8);box-shadow:0 6px 16px rgba(239,93,79,.35)}
+#dimBtn{background:linear-gradient(135deg,#5b4a3a,#8a7660);box-shadow:0 4px 12px rgba(90,70,50,.25)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;color:var(--mut);border-bottom:1px dashed var(--line)}
+.row:last-of-type{border-bottom:0}
+.row b{color:var(--ink);font-weight:700;text-align:right}
+#sNow{color:#c46a12}
 .btns{display:flex;gap:8px;flex-wrap:wrap}.btns button{flex:1}
-label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px;text-transform:uppercase;letter-spacing:.05em}
-input,textarea,select{width:100%;font:inherit;color:var(--ink);background:#141312;border:1px solid var(--line);border-radius:10px;padding:9px}
+label{display:block;font-size:11.5px;color:var(--mut);margin:12px 0 4px;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+input,textarea,select{width:100%;font:inherit;color:var(--ink);background:#fffaf3;border:1.5px solid var(--line);border-radius:12px;padding:10px}
+input:focus,textarea:focus{outline:0;border-color:var(--gold)}
 textarea{min-height:70px}
-.msg{background:#2a2724;border-radius:12px;padding:7px 10px;margin:6px 0;max-width:90%}
-.msg small{display:block;color:var(--mut);font-size:11px}
-.sys{color:var(--mut);font-size:12px;margin:4px 0}
-#err{color:#ff9d8a;font-size:13px;min-height:1em}
-details summary{font-weight:600;cursor:pointer;padding:4px 0}
+.msg{background:linear-gradient(135deg,#ffd27a,#ffb36b);color:#3a2410;border-radius:18px 18px 18px 4px;padding:9px 13px;margin:8px 0;max-width:90%;font-weight:600;box-shadow:0 3px 10px rgba(242,163,58,.25)}
+.msg small{display:block;color:rgba(58,36,16,.6);font-size:11px;font-weight:600;margin-top:2px}
+.sys{color:var(--mut);font-size:12px;margin:5px 0}
+#err{color:#d33a2c;font-size:13px;font-weight:600;min-height:1em;margin-top:6px}
+details summary{font-weight:800;cursor:pointer;padding:4px 0}
 #dim{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;color:#333;display:none;align-items:center;justify-content:center;z-index:9;font-size:13px}
 .hint{font-size:12.5px;color:var(--mut)}
-code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(--gold)}
+code{background:#2b2118;padding:2px 8px;border-radius:8px;font-size:16px;color:#ffd27a}
 @media (orientation:landscape) and (min-width:620px){
   body{max-width:1150px;margin:0 auto}
   .layout{display:flex;gap:16px;align-items:flex-start}
   .layout .lcol{flex:1.15;position:sticky;top:env(safe-area-inset-top);align-self:flex-start}
   .layout .rcol{flex:1;min-width:0}
   #view{padding-top:60%}
-  h1{margin-top:10px}
+  h1{margin-top:8px;font-size:26px}
 }
 </style>
 </head>
 <body>
 <h1>Mae Cam</h1>
+<p class="tag">🐾 live from the living room</p>
 <div class="layout">
 <div class="lcol">
 <div id="view"><video id="video" playsinline muted autoplay></video><div id="badge"><i></i><span id="badgeT">Off</span></div></div>
@@ -79,7 +94,7 @@ code{background:#000;padding:2px 6px;border-radius:6px;font-size:16px;color:var(
     <label>Writing model</label><input id="fM2">
     <label>Minutes between ordinary texts</label><input id="fCool" type="number" min="1" max="60">
   </details>
-  <div class="btns" style="margin-top:10px"><button id="saveBtn" style="background:var(--gold);color:#222">Save</button><button id="wipeBtn">Erase keys &amp; data</button></div>
+  <div class="btns" style="margin-top:10px"><button id="saveBtn" style="background:linear-gradient(135deg,#f2a33a,#ff7aa8)">Save</button><button id="wipeBtn" style="background:#efe3d2;color:#8a3b2c;box-shadow:none">Erase keys &amp; data</button></div>
   <p class="hint">Keys are stored only in this browser on this phone. Snapshots go to Anthropic (to be read) and Telegram (to reach you) and are not kept anywhere else.</p>
 </details>
 </div>
