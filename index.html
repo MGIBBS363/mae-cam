@@ -94,14 +94,23 @@ button.ghost{background:#efe3d2;color:#8a3b2c}
 </div>
 <div class="card">
 <details id="setup"><summary>Settings</summary>
+  <label>What to watch</label><select id="fMode"><option value="dog">Mae (indoors, texts where she is)</option><option value="cat">Cat deterrent (garden, plays a sound)</option></select>
+  <div id="catSet">
+    <label>Sound when a cat is spotted</label><select id="fSound"><option value="hiss">Hiss</option><option value="clap">Claps</option><option value="alarm">Alarm beeps</option><option value="high">High-pitched tone (many adults can't hear it)</option></select>
+    <div class="btns" style="margin-top:8px"><button id="testSnd">▶ Test sound</button></div>
+    <label>Seconds between sounds</label><input id="fScareGap" type="number" min="5" max="600">
+    <p class="hint">Choose the sound before tapping Start. Turn the phone's volume right up; if you hear nothing, check the silent switch.</p>
+  </div>
   <label>Claude API key</label><input id="fKey" type="password" autocomplete="off" placeholder="sk-ant-...">
   <label>Telegram bot token</label><input id="fTg" type="password" autocomplete="off" placeholder="123456:ABC...">
   <div class="btns" style="margin-top:8px"><button id="linkBtn">Link my Telegram</button></div>
   <div id="linkMsg" class="hint"></div>
+  <div id="dogSet">
   <label>House rules (optional, one line)</label><input id="fRules" placeholder="e.g. Not allowed on the sofa">
   <label>Text style</label><select id="fStyle"><option value="plain">Plain updates (where Mae is)</option><option value="funny">Funny texts from Mae</option></select>
   <label>Auto-stop after (hours)</label><input id="fAuto" type="number" min="0.5" max="12" step="0.5">
   <label>Room description (filled in from the first photo; edit if wrong)</label><textarea id="fRoom"></textarea>
+  </div>
   <details><summary>Advanced (for reuse, e.g. garden wildlife)</summary>
     <label>Subject name</label><input id="fName">
     <label>Who you're looking for</label><input id="fDesc">
@@ -198,6 +207,10 @@ function checkPrompt(c){return "You are the eyes of a home camera. Look at this 
 "Rules: there is one "+c.name+" in this home, so any animal of that kind in the photo IS "+c.name+", whatever colour, size or breed it looks like in this light: use present:true. Only use \"other animal\" for a clearly different kind of animal, or a second animal alongside "+c.name+". If you cannot see "+c.name+", use present:false and where:\"out of view\". A cushion, toy or blanket is not an animal: if unsure, lower the confidence. \"other\" is for a person in the room or at the door, post on the mat, or an obvious mess (something torn to pieces or knocked over; ordinary clutter, toys and decorations are NOT mess). If the place is not one of the room's named places, describe it in one or two words. Use the room's place names exactly as written where one fits.\n"+
 "The photo may be blurry, dark, cropped, mid-motion, or mostly filled by a person walking past the camera. That is still a valid photo to answer about: make your best guess (lower confidence if unsure) and reply with exactly the JSON object above. Never reply with an explanation, a refusal, a caveat, or any text outside that one JSON object, whatever the photo looks like. Your reply must start with { as its very first character — no words, reasoning or caveats before it.";}
 
+function catPrompt(){return "You are the eyes of a garden camera. Is there a cat (a domestic cat of any colour) anywhere in this photo, even small, far away, partly hidden or at the edge?\n"+
+'Reply with ONLY a JSON object: {"cat":true|false,"count":<number of cats>,"where":"<2 to 4 words, e.g. on the lawn, on the fence, by the shed>","other":"none|person|dog|fox|bird|other animal","confidence":<0 to 1>}\n'+
+"A cat-shaped plant pot, ornament, shadow or bag is not a cat. A fox or small dog is not a cat. If unsure, lower the confidence. The photo may be dark or blurry: still answer. Your reply must start with { and contain nothing but that JSON object.";}
+
 function roomPrompt(c){return "This is the first photo from a fixed camera that will watch "+c.name+" ("+c.desc+") at home. Describe the room so later photos can be read against it.\n"+
 'Reply with ONLY JSON: {"summary":"<2 sentences on the room and camera angle>","places":[{"name":"<short lowercase name, e.g. sofa, dog bed, rug, armchair, hall door, window>","position":"<where in the frame>"}]}\n'+
 "List up to 8 places a dog might be on or at, including doors and windows. Only list what is visible.";}
@@ -214,14 +227,42 @@ function summaryPrompt(c,log,totals){return "It is the end of the watch. Here is
 
 // ---------- settings ----------
 var $=function(id){return document.getElementById(id)};
-var DEF={key:"",tg:"",chat:"",rules:"",auto:5,room:"",name:"Mae",desc:"a dog (female Labrador-Golden Retriever cross)",owner:"Matt",persona:DEFAULT_PERSONA,m1:"claude-haiku-5-5",m2:"claude-sonnet-5-5",cool:4,style:"plain"};
+var DEF={key:"",tg:"",chat:"",rules:"",auto:5,room:"",name:"Mae",desc:"a dog (female Labrador-Golden Retriever cross)",owner:"Matt",persona:DEFAULT_PERSONA,m1:"claude-haiku-5-5",m2:"claude-sonnet-5-5",cool:4,style:"plain",mode:"dog",sound:"hiss",scareGap:20};
 var S=Object.assign({},DEF);
 try{Object.assign(S,JSON.parse(localStorage.getItem("maecam")||"{}"))}catch(e){}
 function save(){try{localStorage.setItem("maecam",JSON.stringify(S))}catch(e){}}
-var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"name",fDesc:"desc",fOwner:"owner",fPersona:"persona",fM1:"m1",fM2:"m2",fCool:"cool",fStyle:"style"};
-function fill(){for(var k in FIELDS)$(k).value=S[FIELDS[k]];$("whoIs").textContent=S.name+" is";$("sTg").textContent=S.chat?"linked":"not linked";document.title=S.name+" Cam";document.querySelector("h1").textContent=S.name+" Cam";}
-function readForm(){for(var k in FIELDS){var v=String($(k).value).trim();S[FIELDS[k]]=(k==="fAuto"||k==="fCool")?(parseFloat(v)||DEF[FIELDS[k]]):v;}if(!S.persona)S.persona=DEFAULT_PERSONA;save();fill();}
-$("saveBtn").onclick=function(){readForm();note("Settings saved.");startPolling();};
+var FIELDS={fKey:"key",fTg:"tg",fRules:"rules",fAuto:"auto",fRoom:"room",fName:"name",fDesc:"desc",fOwner:"owner",fPersona:"persona",fM1:"m1",fM2:"m2",fCool:"cool",fStyle:"style",fMode:"mode",fSound:"sound",fScareGap:"scareGap"};
+function fill(){for(var k in FIELDS)$(k).value=S[FIELDS[k]];$("whoIs").textContent=S.name+" is";$("sTg").textContent=S.chat?"linked":"not linked";applyMode();}
+function isCat(){return S.mode==="cat"}
+function applyMode(){var c=isCat(),t=c?"Cat Guard":S.name+" Cam";document.title=t;document.querySelector("h1").textContent=t;
+  var tag=document.querySelector(".tag");if(tag)tag.textContent=c?"🐈 keeping cats out of the garden":"🐾 live from the living room";
+  $("whoIs").textContent=c?"Last cat":S.name+" is";$("catSet").style.display=c?"block":"none";$("dogSet").style.display=c?"none":"block";
+  $("learnBtn").style.display=c?"none":"";}
+function readForm(){for(var k in FIELDS){var v=String($(k).value).trim();S[FIELDS[k]]=(k==="fAuto"||k==="fCool"||k==="fScareGap")?(parseFloat(v)||DEF[FIELDS[k]]):v;}if(!S.persona)S.persona=DEFAULT_PERSONA;save();fill();}
+$("saveBtn").onclick=function(){readForm();setSound();note("Settings saved.");startPolling();};
+$("fMode").onchange=function(){S.mode=this.value;applyMode();};
+
+// ---------- sounds (made on the phone, no files needed) ----------
+function makeWav(kind){
+  var sr=44100,dur={hiss:1.6,clap:1.4,alarm:2,high:2.5}[kind]||1.5,n=Math.floor(sr*dur),x=new Float32Array(n),i,t,last=0;
+  for(i=0;i<n;i++){t=i/sr;var v=0;
+    if(kind==="hiss"){var w=Math.random()*2-1;v=(w-last)*0.9;last=w;var seg=t%0.8;v*=Math.min(1,seg/0.02)*Math.max(0,1-seg/0.75);}
+    else if(kind==="clap"){var k=t%0.35;v=(Math.random()*2-1)*Math.exp(-k*40)*(k<0.2?1:0);}
+    else if(kind==="alarm"){var p=Math.floor(t/0.15);v=(p%2?0:1)*Math.sign(Math.sin(2*Math.PI*(p%4<2?2600:3300)*t))*0.8;}
+    else{v=Math.sin(2*Math.PI*15000*t)*Math.min(1,t/0.05,(dur-t)/0.05);}
+    x[i]=Math.max(-1,Math.min(1,v));}
+  var b=new ArrayBuffer(44+n*2),d=new DataView(b);function s(o,str){for(var j=0;j<str.length;j++)d.setUint8(o+j,str.charCodeAt(j))}
+  s(0,"RIFF");d.setUint32(4,36+n*2,true);s(8,"WAVE");s(12,"fmt ");d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);
+  d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);s(36,"data");d.setUint32(40,n*2,true);
+  for(i=0;i<n;i++)d.setInt16(44+i*2,x[i]*32767,true);
+  return URL.createObjectURL(new Blob([b],{type:"audio/wav"}));
+}
+var sfx=new Audio(),sfxUrls={},sfxKind="";sfx.preload="auto";
+function setSound(){var k=S.sound||"hiss";if(k===sfxKind)return;sfxUrls[k]=sfxUrls[k]||makeWav(k);sfx.src=sfxUrls[k];sfxKind=k;}
+function unlockSound(){ // must run straight from a tap: iPhones only allow sound after one
+  try{setSound();sfx.muted=true;var p=sfx.play();if(p&&p.then)p.then(function(){sfx.pause();sfx.currentTime=0;sfx.muted=false;},function(){sfx.muted=false;});}catch(e){}}
+function playSound(){try{setSound();sfx.muted=false;sfx.currentTime=0;var p=sfx.play();if(p&&p.catch)p.catch(function(e){logErr("sound",e.message+" (tap Start on the phone to allow sound)");});}catch(e){logErr("sound",e.message);}}
+$("testSnd").onclick=function(){S.sound=$("fSound").value;playSound();};
 function logErr(kind,detail){try{var L=JSON.parse(localStorage.getItem("maecam_errs")||"[]");L.push(new Date().toLocaleString("en-GB")+" | "+kind+" | "+detail);localStorage.setItem("maecam_errs",JSON.stringify(L.slice(-40)));}catch(e){}renderErrs();}
 function renderErrs(){var L=errLog();$("errCount").textContent=L.length;$("errCount").className="pill"+(L.length?"":" ok");
   $("errList").innerHTML=L.length?L.slice().reverse().map(function(x){var p=x.split(" | ");return '<div class="eitem"><small>'+esc(p[0]||"")+' · '+esc(p[1]||"")+'</small>'+esc(p.slice(2).join(" | "))+'</div>'}).join(""):'<div class="sys">No errors logged. 🎉</div>';}
@@ -235,7 +276,12 @@ $("wipeBtn").onclick=function(){if(this.dataset.sure){try{localStorage.removeIte
 fill();if(!S.key||!S.tg||!S.chat)$("setup").open=true;
 
 // ---------- state ----------
-var R={gen:0,starting:false,pauseUntil:0,nextTextTry:0,tries:[],totals:{},on:false,stream:null,timer:null,det:null,busy:false,startAt:0,stopAt:0,cur:null,since:0,lastTexted:null,lastTextAt:0,stayTexted:0,texts:[],log:[],checks:0,hourChecks:[],cost:0,fails:0,lastOther:"none"};
+var R={gen:0,starting:false,pauseUntil:0,nextTextTry:0,tries:[],totals:{},on:false,stream:null,timer:null,det:null,busy:false,startAt:0,stopAt:0,cur:null,since:0,lastTexted:null,lastTextAt:0,stayTexted:0,texts:[],log:[],checks:0,hourChecks:[],cost:0,fails:0,lastOther:"none",visits:[],lastCatAt:0,lastScare:0,scares:0};
+
+function allVisits(){try{return JSON.parse(localStorage.getItem("maecam_visits")||"[]")}catch(e){return[]}}
+function saveVisit(v){try{var L=allVisits();L.push(v);localStorage.setItem("maecam_visits",JSON.stringify(L.slice(-300)));}catch(e){}}
+function updVisit(v){try{var L=allVisits();for(var i=L.length-1;i>=0;i--)if(L[i].at===v.at){L[i]=v;break;}localStorage.setItem("maecam_visits",JSON.stringify(L));}catch(e){}}
+function todaysVisits(){var d=new Date();d.setHours(0,0,0,0);return allVisits().filter(function(v){return v.at>=d.getTime()});}
 function esc(s){return String(s).replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
 function hhmm(t){var d=new Date(t||Date.now());return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function mins(ms){var m=Math.round(ms/60000);return m<60?m+" min":Math.floor(m/60)+"h "+("0"+m%60).slice(-2)+"m"}
@@ -243,9 +289,10 @@ function feed(html){var f=$("feed");if(f.firstChild&&f.firstChild.className==="s
 function note(t){feed('<div class="sys">'+hhmm()+" · "+esc(t)+"</div>")}
 function err(t){$("err").textContent=t||""}
 function ui(){
-  $("startBtn").textContent=R.on?"Stop watching":"Start watching";$("startBtn").className="big"+(R.on?" on":"");
+  $("startBtn").textContent=R.on?(isCat()?"Stop guarding":"Stop watching"):(isCat()?"Start guarding":"Start watching");$("startBtn").className="big"+(R.on?" on":"");
   $("badge").className=R.on?"on":"";$("badgeT").textContent=R.on?"Watching · "+mins(Date.now()-R.startAt):"Off";
-  $("sNow").textContent=R.cur?(R.cur.present?R.cur.where+" · "+R.cur.doing+" · "+mins(Date.now()-R.since):"out of view · "+mins(Date.now()-R.since)):"–";
+  if(isCat()){var tv=todaysVisits(),lv=tv[tv.length-1];$("sNow").textContent=lv?lv.where+" · "+hhmm(lv.at)+" · "+tv.length+" visit"+(tv.length===1?"":"s")+" today":"none yet today";}
+  else $("sNow").textContent=R.cur?(R.cur.present?R.cur.where+" · "+R.cur.doing+" · "+mins(Date.now()-R.since):"out of view · "+mins(Date.now()-R.since)):"–";
   $("sTexts").textContent=R.texts.length;$("sCost").textContent=R.checks+" / "+(R.cost*0.79*100).toFixed(2)+"p";
   $("sAuto").textContent=R.on?"in "+mins(R.stopAt-Date.now()):S.auto+" h after start";
 }
@@ -327,10 +374,12 @@ $("linkBtn").onclick=function(){readForm();if(!S.tg){$("linkMsg").textContent="P
 var PICS=["Here. Don't make it weird.","Photo attached. I wasn't ready.","This is me. Nothing to see.","Evidence, as requested.","There. Happy."];
 async function command(c){
   if(c==="pic"||c==="photo"){if(!R.on)return sendText("Camera's off. Text start, or tap Start on the phone.");return sendText(PICS[Math.floor(Math.random()*PICS.length)],await snapshot());}
+  if(isCat()&&c==="status"){var tv=todaysVisits(),lv=tv[tv.length-1];return sendText((R.on?"Guarding the garden. ":"Not guarding. Camera's off. ")+(tv.length?tv.length+" cat visit"+(tv.length===1?"":"s")+" today, last at "+hhmm(lv.at)+" ("+lv.where+").":"No cats today."));}
+  if(isCat()&&c==="summary"){var tv2=todaysVisits();return sendText(tv2.length?"Cat visits today ("+tv2.length+"):\n"+tv2.map(function(v){return hhmm(v.at)+" "+v.where+(v.count>1?" ("+v.count+" cats)":"")+(v.scares?", sound ×"+v.scares:"")}).join("\n"):"No cats today.");}
   if(c==="status"){if(!R.on)return sendText("Not watching. Camera's off.");if(!R.cur)return sendText("Watching. Nothing to report yet.");
     return sendText(R.cur.present?("On record: "+R.cur.where+", "+R.cur.doing+". "+mins(Date.now()-R.since)+" so far."):("Out of view. "+mins(Date.now()-R.since)+" so far."));}
   if(c==="stop"){if(!R.on)return sendText("Already off.");return stop("you asked");}
-  if(c==="start"){if(R.on||R.starting)return sendText("Already watching.");try{await start();await sendText("Watching. Camera's on.");}catch(e){await sendText("Can't turn the camera on from here. Tap Start on the phone. ("+e.message+")");}return;}
+  if(c==="start"){if(R.on||R.starting)return sendText("Already watching.");try{await start();await sendText(isCat()?"Guarding. Camera's on. Note: sound only works after a tap on the phone itself.":"Watching. Camera's on.");}catch(e){await sendText("Can't turn the camera on from here. Tap Start on the phone. ("+e.message+")");}return;}
   if(c==="summary"){if(!R.log.length)return sendText("Nothing to report.");return sendSummary("");}
   if(c==="errors"){var L=errLog();return sendText(L.length?"Last errors:\n"+L.slice(-10).join("\n").slice(-3500):"No errors logged.");}
   return sendText("Commands: pic, status, summary, stop, start, errors.");
@@ -363,12 +412,12 @@ async function start(){
     try{video.srcObject=stream;await video.play();}catch(e){stream.getTracks().forEach(function(t){t.stop()});throw e;}
     stream.getVideoTracks()[0].onended=camLost;
     await sleep(1200);
-    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(),startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",diag:0,checks:0,hourChecks:[],cost:0,fails:0});
+    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(isCat()?{changeFrac:0.008,minGap:5000,maxMoving:1000,heartbeat:30*60000}:{}),visits:[],lastCatAt:0,lastScare:0,scares:0,startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",diag:0,checks:0,hourChecks:[],cost:0,fails:0});
     var g=R.gen;
-    await getWake();startPolling();note("Watching started. Auto-stop at "+hhmm(R.stopAt)+".");
+    await getWake();startPolling();note((isCat()?"Guarding the garden. Sound: "+S.sound+". Auto-stop at ":"Watching started. Auto-stop at ")+hhmm(R.stopAt)+".");
     if(!("wakeLock" in navigator))note("This iPhone can't keep its own screen on. Set Settings > Display & Brightness > Auto-Lock to Never.");
     ui();
-    if(!S.room)await learnRoom();
+    if(!S.room&&!isCat())await learnRoom();
     if(live(g)){clearInterval(R.timer);R.timer=setInterval(tick,1000);}
   }finally{R.starting=false;}
 }
@@ -379,7 +428,7 @@ async function stop(why){
   note("Watching stopped ("+why+"). Camera off.");ui();
   if(why!=="button"&&!/key was refused/.test(why))await sendText("Watch over ("+why+"). Camera's off."+(R.log.length>1?" Text \"summary\" for today's report.":""));
 }
-$("startBtn").onclick=async function(){this.disabled=true;try{if(R.on)await stop("button");else await start();}catch(e){err(e.name==="NotAllowedError"?"Camera permission was refused. Allow it in Settings > Safari > Camera.":e.message);}this.disabled=false;ui();};
+$("startBtn").onclick=async function(){if(!R.on){readForm();unlockSound();}this.disabled=true;try{if(R.on)await stop("button");else await start();}catch(e){err(e.name==="NotAllowedError"?"Camera permission was refused. Allow it in Settings > Safari > Camera.":e.message);}this.disabled=false;ui();};
 $("dimBtn").onclick=function(){$("dim").style.display="flex"};$("dim").onclick=function(){this.style.display="none"};
 $("learnBtn").onclick=async function(){if(!R.on){err("Start watching first, then re-learn.");return;}await learnRoom();};
 
@@ -411,8 +460,10 @@ async function tick(){
     var why=R.det.step(grey(),now);
     R.hourChecks=R.hourChecks.filter(function(t){return now-t<3600000});
     var did=false;
-    if(why&&now>=R.pauseUntil&&R.hourChecks.length<60){await check(g);did=true;}
-    if(live(g)&&await maybeText(g))did=true;
+    // cat mode: while a cat was seen in the last 2 minutes, keep checking even if nothing moves, so a sitting cat gets the sound again
+    if(!why&&isCat()&&R.lastCatAt&&now-R.lastCatAt<120000&&now-R.lastScare>=S.scareGap*1000&&now-(R.lastCheckAt||0)>=5000)why="cat nearby";
+    if(why&&now>=R.pauseUntil&&R.hourChecks.length<(isCat()?240:60)){R.lastCheckAt=now;await (isCat()?catCheck(g):check(g));did=true;}
+    if(!isCat()&&live(g)&&await maybeText(g))did=true;
     if(did){R.fails=0;R.lastErr="";err("");}
   }catch(e){
     if(live(g)){
@@ -445,6 +496,21 @@ async function check(g){
   }
   if(o.other!=="none"&&o.other!==R.lastOther)R.log.push(hhmm()+" "+o.other+" seen: "+o.detail);
   R.lastOther=o.other;R.cur=o;R.curBlob=blob;R.curBlobAt=Date.now();ui();
+}
+async function catCheck(g){
+  var blob=await snapshot();R.checks++;R.hourChecks.push(Date.now());
+  var o=parseJSON(await claude(S.m1,null,catPrompt(),blob,120));
+  if(!live(g))return;
+  var now=Date.now(),where=String(o.where||"in the garden").toLowerCase();
+  if(!o.cat||(+o.confidence||0)<0.6){ui();return;}
+  var scared=false;
+  if(now-R.lastScare>=S.scareGap*1000){playSound();R.lastScare=now;R.scares++;scared=true;}
+  var newVisit=!R.lastCatAt||now-R.lastCatAt>5*60000;R.lastCatAt=now;
+  if(newVisit){var v={at:now,where:where,count:+o.count||1,scares:scared?1:0};R.visits.push(v);saveVisit(v);
+    R.log.push(hhmm()+" cat "+where+(scared?", played "+S.sound:""));note("Cat spotted "+where+(scared?". Played the "+S.sound+".":"."));
+    sendText("🐈 Cat "+where+" ("+hhmm()+")."+(scared?" Played the "+S.sound+".":""),blob);
+  }else{var cv=R.visits[R.visits.length-1];if(cv&&scared){cv.scares++;updVisit(cv);note("Cat still there. Played it again.");}}
+  ui();
 }
 function plainText(f){var w=f.where_now;
   var d=f.doing&&f.doing!=="unknown"?", "+f.doing:"";
@@ -490,7 +556,7 @@ async function sendSummary(fallback){
     var t=await claude(S.m2,S.persona,summaryPrompt({owner:S.owner,rules:S.rules},log,totals),null,160);await sendText(t.replace(/^["“]|["”]$/g,""));
   }catch(e){note("Couldn't write the summary: "+e.message);if(fallback)await sendText(fallback);}
 }
-startPolling();ui();renderErrs();
+setSound();startPolling();ui();renderErrs();
 </script>
 </body>
 </html>
