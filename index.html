@@ -96,7 +96,7 @@ button.ghost{background:#efe3d2;color:#8a3b2c}
 <details id="setup"><summary>Settings</summary>
   <label>What to watch</label><select id="fMode"><option value="dog">Mae (indoors, texts where she is)</option><option value="cat">Cat deterrent (garden, plays a sound)</option></select>
   <div id="catSet">
-    <label>Sound when a cat is spotted</label><select id="fSound"><option value="hiss">Hiss</option><option value="clap">Claps</option><option value="alarm">Alarm beeps</option><option value="bang">Loud bang</option><option value="high">High-pitched tone (many adults can't hear it)</option><option value="rotate">Rotate through all of them</option><option value="best">Whichever works best so far</option></select>
+    <label>Sound when a cat is spotted</label><select id="fSound"><option value="hiss">Hiss</option><option value="clap">Claps</option><option value="alarm">Alarm beeps</option><option value="bang">Sharp crack (like a whip or door slam)</option><option value="high">High-pitched tone (many adults can't hear it)</option><option value="rotate">Rotate through all of them</option><option value="best">Whichever works best so far</option></select>
     <div class="btns" style="margin-top:8px"><button id="testSnd">▶ Test sound</button></div>
     <label>Seconds between sounds</label><input id="fScareGap" type="number" min="5" max="600">
     <p class="hint">Choose the sound before tapping Start. Turn the phone's volume right up; if you hear nothing, check the silent switch.</p>
@@ -246,13 +246,14 @@ $("fMode").onchange=function(){S.mode=this.value;applyMode();};
 
 // ---------- sounds (made on the phone, no files needed) ----------
 function makeWav(kind){
-  var sr=44100,dur={hiss:1.6,clap:1.4,alarm:2,high:2.5,bang:1.5}[kind]||1.5,n=Math.floor(sr*dur),x=new Float32Array(n),i,t,last=0,lp=0,ph=0;
+  var sr=44100,dur={hiss:1.6,clap:1.4,alarm:2,high:2.5,bang:0.7}[kind]||1.5,n=Math.floor(sr*dur),x=new Float32Array(n),i,t,last=0,lp=0,ph=0;
   for(i=0;i<n;i++){t=i/sr;var v=0;
     if(kind==="hiss"){var w=Math.random()*2-1;v=(w-last)*0.9;last=w;var seg=t%0.8;v*=Math.min(1,seg/0.02)*Math.max(0,1-seg/0.75);}
     else if(kind==="clap"){var k=t%0.35;v=(Math.random()*2-1)*Math.exp(-k*40)*(k<0.2?1:0);}
-    else if(kind==="bang"){ // sharp crack + rumble + falling thump, pushed into soft clipping so it's as loud as a phone can go
-      var w=Math.random()*2-1;lp+=0.08*(w-lp);ph+=2*Math.PI*(55+120*Math.exp(-t*12))/sr;
-      v=w*Math.exp(-t*30)+lp*Math.exp(-t*3.5)*4+Math.sin(ph)*Math.exp(-t*6)*0.9;v=Math.tanh(v*3)*Math.min(1,(dur-t)/0.1);}
+    else if(kind==="bang"){ // two sharp cracks (whip / door slam): instant start, very short, bright, no rumble
+      var w=Math.random()*2-1,hp=w-last;last=w;v=0;
+      [[0,1],[0.28,0.9]].forEach(function(c){var dt=t-c[0];if(dt>=0&&dt<0.25)v+=c[1]*((hp*0.8+w*0.4)*Math.exp(-dt*70)+Math.sin(2*Math.PI*480*dt)*Math.exp(-dt*45)*0.5);});
+      v=Math.tanh(v*3);}
     else if(kind==="alarm"){var p=Math.floor(t/0.15);v=(p%2?0:1)*Math.sign(Math.sin(2*Math.PI*(p%4<2?2600:3300)*t))*0.8;}
     else{v=Math.sin(2*Math.PI*15000*t)*Math.min(1,t/0.05,(dur-t)/0.05);}
     x[i]=Math.max(-1,Math.min(1,v));}
@@ -262,7 +263,7 @@ function makeWav(kind){
   for(i=0;i<n;i++)d.setInt16(44+i*2,x[i]*32767,true);
   return URL.createObjectURL(new Blob([b],{type:"audio/wav"}));
 }
-function SN(k){return {hiss:"hiss",clap:"claps",alarm:"alarm beeps",high:"high tone",bang:"bang"}[k]||k}
+function SN(k){return {hiss:"hiss",clap:"claps",alarm:"alarm beeps",high:"high tone",bang:"crack"}[k]||k}
 var SOUNDS=["hiss","clap","alarm","high","bang"],sfxEl={},rot=0;
 function player(k){if(!sfxEl[k]){var a=new Audio();a.preload="auto";a.src=makeWav(k);sfxEl[k]=a;}return sfxEl[k];}
 function setSound(){SOUNDS.forEach(player);}
@@ -434,7 +435,7 @@ async function command(c,arg){
     return sendText(head+(K.length?"\n\nWho's been:\n"+byCat:""));}
   if(c==="sounds"||c==="scores")return sendText("🔊 Which sound works (cat gone 10 s later):\n"+soundTable()+"\nSetting: "+S.sound+".");
   if(c==="forgetcats"){saveCats([]);return sendText("Forgotten all known cats. New ones will be numbered from #1.");}
-  var NAMED={bang:"bang",hiss:"hiss",clap:"clap",claps:"clap",alarm:"alarm",beeps:"alarm",high:"high",tone:"high"};
+  var NAMED={bang:"bang",crack:"bang",hiss:"hiss",clap:"clap",claps:"clap",alarm:"alarm",beeps:"alarm",high:"high",tone:"high"};
   if(c==="sound"||c==="scare"||c==="go"||NAMED[c]){
     if(!R.on)return sendText("Camera's off. Tap Start on the phone first (that also lets it make sound).");
     var played=await playSound(NAMED[c]||NAMED[arg]||undefined);
@@ -444,7 +445,7 @@ async function command(c,arg){
     note("Played the "+SN(played)+" (asked from Telegram).");
     await sleep(2500);return sendText("🔊 Played the "+SN(played)+". This is 2 seconds later:",await snapshot());}
   if(c==="errors"){var L=errLog();return sendText(L.length?"Last errors:\n"+L.slice(-10).join("\n").slice(-3500):"No errors logged.");}
-  return sendText("Commands: sound (play it now; or bang, hiss, claps, alarm, tone for that one), cats (counts and who's been), sounds (which sound works best), forgetcats, pic, test (full check, end to end), status, summary, errors, start, stop.");
+  return sendText("Commands: sound (play it now; or crack, hiss, claps, alarm, tone for that one), cats (counts and who's been), sounds (which sound works best), forgetcats, pic, test (full check, end to end), status, summary, errors, start, stop.");
 }
 
 // ---------- camera ----------
