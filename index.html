@@ -472,13 +472,16 @@ $("linkBtn").onclick=function(){readForm();if(!S.tg){$("linkMsg").textContent="P
   poll.linkCode=c;poll.linkUntil=Date.now()+5*60000;$("linkMsg").innerHTML="Open your bot in Telegram and send it exactly this within 5 minutes: <code>"+c+"</code>";startPolling();};
 function health(){
   if(!R.on)return "Camera's off.";
+  if(R.frozen)return "Health: ⚠️ camera picture FROZEN since "+hhmm(R.vtAt)+". Tap Stop then Start on the phone.";
+  if(document.hidden)return "Health: ⚠️ the page isn't in front on the phone, so watching is paused.";
   var now=Date.now(),e1=errTimes.filter(function(t){return now-t<3600000}).length;
   var ok=R.lastOkAt?(now-R.lastOkAt<60000?"under a minute":mins(now-R.lastOkAt))+" ago":"none yet";
   return "Health: last good check "+ok+" · "+R.checks+" checks this session · "+e1+" error"+(e1===1?"":"s")+" in the last hour · "+(now<R.pauseUntil?"PAUSED after errors · ":"")+"auto-stop "+hhmm(R.stopAt)+".";
 }
 async function testRun(){
   if(!R.on)return sendText("Camera's off, so nothing to test. Text start, or tap Start on the phone.");
-  var t0=Date.now(),blob=await snapshot();
+  var t0=Date.now(),ph=await livePhoto(),blob=ph.blob;
+  if(ph.warn)return sendText("❌ Test FAILED: the camera isn't giving a live picture."+ph.warn+"\n"+health(),blob);
   try{
     var o=isLocal()?await localDetect(R.catBox&&zoomBox(R.catBox)):parseJSON(await claude(S.m1,null,isCat()?catPrompt():checkPrompt(S),blob,300)),secs=((Date.now()-t0)/1000).toFixed(1);R.lastOkAt=Date.now();
     var saw=isCat()?(o.cat?"a cat "+(o.where||""):"no cat")+(o.other&&o.other!=="none"?" (also: "+o.other+")":""):(o.present?S.name+" on the "+o.where+", "+o.doing:S.name+" not in view")+(o.other&&o.other!=="none"?" (also: "+o.other+")":"");
@@ -487,7 +490,7 @@ async function testRun(){
 }
 var PICS=["Here. Don't make it weird.","Photo attached. I wasn't ready.","This is me. Nothing to see.","Evidence, as requested.","There. Happy."];
 async function command(c,arg){
-  if(c==="pic"||c==="photo"){if(!R.on)return sendText("Camera's off. Text start, or tap Start on the phone.");return sendText(PICS[Math.floor(Math.random()*PICS.length)],await snapshot());}
+  if(c==="pic"||c==="photo"){if(!R.on)return sendText("Camera's off. Text start, or tap Start on the phone.");var ph=await livePhoto();return sendText((isCat()?"Here's the garden right now.":PICS[Math.floor(Math.random()*PICS.length)])+ph.warn,ph.blob);}
   if(isCat()&&c==="status"){var tv=todaysVisits(),lv=tv[tv.length-1];return sendText((R.on?"Guarding the garden. ":"Not guarding. Camera's off. ")+(tv.length?tv.length+" cat visit"+(tv.length===1?"":"s")+" today, last at "+hhmm(lv.at)+" ("+lv.where+").":"No cats today.")+(R.on?"\n"+health():""));}
   if(isCat()&&c==="summary"){var tv2=todaysVisits();return sendText(tv2.length?"Cat visits today ("+tv2.length+"):\n"+tv2.map(function(v){return hhmm(v.at)+" "+(v.label?v.label+" ":"")+v.where+(v.count>1?" ("+v.count+" cats)":"")+(v.scares?", sound ×"+v.scares:"")}).join("\n"):"No cats today.");}
   if(c==="status"){if(!R.on)return sendText("Not watching. Camera's off.");if(!R.cur)return sendText("Watching. Nothing to report yet.\n"+health());
@@ -510,7 +513,7 @@ async function command(c,arg){
     R.lastScare=Date.now();var cv=R.visits&&R.visits[R.visits.length-1];
     if(cv&&Date.now()-R.lastCatAt<5*60000){cv.scares++;(cv.sounds=cv.sounds||[]).push(played);updVisit(cv);scheduleEval(played);} // only score it if a cat was actually around
     note("Played the "+SN(played)+" (asked from Telegram).");
-    await sleep(2500);return sendText("🔊 Played the "+SN(played)+". This is 2 seconds later:",await snapshot());}
+    await sleep(2000);var ph2=await livePhoto();return sendText("🔊 Played the "+SN(played)+". This is 2 seconds later:"+ph2.warn,ph2.blob);}
   if(c==="errors"){var L=errLog();return sendText(L.length?"Last errors:\n"+L.slice(-10).join("\n").slice(-3500):"No errors logged.");}
   return sendText("Commands: sound (play it now; or bark, alarm, tone for that one), cats (counts and who's been), sounds (which sound works best), forgetcats, pic, test (full check, end to end), status, summary, errors, start, stop.");
 }
@@ -519,6 +522,19 @@ async function command(c,arg){
 var video=$("video"),small=$("small"),shot=$("shot"),wake=null;
 function grey(){var x=small.getContext("2d",{willReadFrequently:true});x.drawImage(video,0,0,64,48);var d=x.getImageData(0,0,64,48).data,g=new Uint8Array(64*48);for(var i=0;i<g.length;i++)g[i]=(d[i*4]*3+d[i*4+1]*6+d[i*4+2])/10;return g;}
 function snapshot(){var w=640,h=Math.round(w*video.videoHeight/(video.videoWidth||1))||480;shot.width=w;shot.height=h;shot.getContext("2d").drawImage(video,0,0,w,h);return new Promise(function(res){shot.toBlob(res,"image/jpeg",0.72)});}
+// Is the camera picture actually live? Waits for the video to move on to a new frame; false means it is frozen.
+async function freshFrame(ms){
+  var t0=video.currentTime,end=Date.now()+(ms||2500);
+  if(video.paused)try{await video.play()}catch(e){}
+  while(Date.now()<end){await sleep(120);if(video.currentTime!==t0)return true;}
+  return false;
+}
+var FROZEN="\n⚠️ The camera picture is frozen, so this photo is old, not live. ";
+async function livePhoto(){ // {blob, warn}: warn is text to add to the message when the photo can't be trusted
+  var hidden=document.hidden,fresh=await freshFrame();
+  if(fresh&&!hidden)await sleep(150);
+  return {blob:await snapshot(),warn:fresh?"":FROZEN+(hidden?"The Mae Cam page isn't in front on the phone (locked, or another app is open). Open it again.":"On the phone, tap Stop then Start.")};
+}
 async function getWake(){try{if("wakeLock" in navigator){wake=await navigator.wakeLock.request("screen");}}catch(e){}}
 function camLost(){if(!R.on)return;stop("the camera feed was lost");}
 document.addEventListener("visibilitychange",function(){
@@ -544,7 +560,7 @@ async function start(){
       try{await loadLocal();err("");}catch(e){stream.getTracks().forEach(function(t){t.stop()});video.srcObject=null;throw e;}}
     stream.getVideoTracks()[0].onended=camLost;
     await sleep(1200);
-    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(isCat()?{changeFrac:0.008,minGap:5000,maxMoving:1000,heartbeat:30*60000}:{}),visits:[],lastCatAt:0,lastScare:0,scares:0,pendingEval:null,startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",diag:0,checks:0,hourChecks:[],cost:0,fails:0,lastOkAt:0,lastCheckAt:0,prevFor:0,lg:null,zoom:null,catBox:null,tile:0,catAway:false});
+    Object.assign(R,{on:true,stream:stream,gen:R.gen+1,det:new Detector(isCat()?{changeFrac:0.008,minGap:5000,maxMoving:1000,heartbeat:30*60000}:{}),visits:[],lastCatAt:0,lastScare:0,scares:0,pendingEval:null,startAt:Date.now(),stopAt:Date.now()+S.auto*3600000,cur:null,curBlob:null,since:Date.now(),lastTexted:null,lastTextAt:0,stayTexted:0,nextTextTry:0,pauseUntil:0,tries:[],texts:[],log:[],totals:{},lastOther:"none",lastErr:"",diag:0,checks:0,hourChecks:[],cost:0,fails:0,lastOkAt:0,lastCheckAt:0,prevFor:0,lg:null,zoom:null,catBox:null,tile:0,catAway:false,vt:-1,vtAt:Date.now(),frozen:false});
     var g=R.gen;
     await getWake();startPolling();note((isCat()?"Guarding the garden"+(isLocal()?" (spotting on this phone"+(tgOn()?"":", nothing sent anywhere")+")":"")+". Sound: "+S.sound+". Auto-stop at ":"Watching started. Auto-stop at ")+hhmm(R.stopAt)+".");
     if(isCat()&&!keep.want)keepStart();
@@ -588,6 +604,14 @@ async function tick(){
   if(!R.on||R.busy||document.hidden||video.readyState<2)return;
   var now=Date.now(),g=R.gen;
   if(now>=R.stopAt){stop("auto-stop after "+S.auto+" h");return;}
+  // watchdog: a frozen picture would otherwise look like a quiet garden for hours
+  if(video.currentTime!==R.vt){R.vt=video.currentTime;R.vtAt=now;if(R.frozen){R.frozen=false;note("Camera picture is live again.");sendText("Camera picture is live again.");}}
+  else if(now-R.vtAt>4000){
+    if(video.paused)video.play().catch(function(){});
+    if(now-R.vtAt>15000&&!R.frozen){R.frozen=true;logErr("camera","picture frozen (video "+(video.paused?"paused":"not paused")+", track "+((R.stream&&R.stream.getVideoTracks()[0]||{}).readyState||"?")+((R.stream&&R.stream.getVideoTracks()[0]||{}).muted?", muted":"")+")");
+      note("Camera picture has frozen. Tap Stop then Start.");sendText("⚠️ The camera picture has frozen, so I can't see anything. On the phone, tap Stop then Start.");}
+    return; // don't judge a frozen picture
+  }
   R.busy=true;keepCheck();
   try{
     var gr=grey(),why;
